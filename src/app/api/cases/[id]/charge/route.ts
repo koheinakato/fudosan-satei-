@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { stripe } from '@/lib/stripe'
-import { Resend } from 'resend'
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -53,6 +52,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       .eq('id', id)
 
     if (process.env.RESEND_API_KEY) {
+      const { Resend } = await import('resend')
       const resend = new Resend(process.env.RESEND_API_KEY)
       await resend.emails.send({
       from: process.env.FROM_EMAIL!,
