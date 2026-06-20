@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import Image from 'next/image'
 
 export default function Home() {
   return (
@@ -27,6 +28,28 @@ export default function Home() {
           <p className="text-xs text-[#5a5a5a] mt-4">
             申し込みは無料。査定完了後に料金をご請求します。
           </p>
+        </div>
+      </section>
+
+      {/* サンプルレポート */}
+      <section className="px-4 py-20 border-b border-[#ced4da] bg-[#f9f9f9]">
+        <div className="max-w-4xl mx-auto">
+          <p className="label-nendo border-b border-[#ced4da] pb-2 mb-2">サンプルレポート</p>
+          <p className="text-xs text-[#5a5a5a] mb-10">実際に納品される査定書のサンプルです。</p>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {[1, 2, 3, 4, 5, 6].map((n) => (
+              <div key={n} className="bg-white border border-[#ced4da] overflow-hidden">
+                <Image
+                  src={`/sample-report/page-${n}.png`}
+                  alt={`査定書サンプル ${n}ページ目`}
+                  width={794}
+                  height={1123}
+                  className="w-full h-auto"
+                />
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
