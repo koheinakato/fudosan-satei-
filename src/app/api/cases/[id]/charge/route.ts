@@ -3,8 +3,6 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { stripe } from '@/lib/stripe'
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
 
@@ -54,7 +52,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       .update({ stripe_payment_intent_id: paymentIntent.id })
       .eq('id', id)
 
-    await resend.emails.send({
+    if (process.env.RESEND_API_KEY) {
+      const resend = new Resend(process.env.RESEND_API_KEY)
+      await resend.emails.send({
       from: process.env.FROM_EMAIL!,
       to: caseData.customer_email,
       subject: `【不動産査定】査定料金 ${caseData.total_price.toLocaleString()}円 を引き落としました`,
@@ -63,7 +63,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         <p>査定料金 <strong>${caseData.total_price.toLocaleString()}円</strong> を決済しました。</p>
         <p>現在査定レポートを作成中です。完成次第ご連絡いたします。</p>
       `,
-    })
+      })
+    }
 
     return NextResponse.json({ success: true, amount: caseData.total_price })
   }
