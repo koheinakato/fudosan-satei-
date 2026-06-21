@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { calcPrice, BASE_PRICE, EXTRA_PARCEL_PRICE } from '@/lib/stripe'
-import { Resend } from 'resend'
-
-const resend = new Resend(process.env.RESEND_API_KEY)
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -36,20 +33,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL
 
-  await resend.emails.send({
-    from: process.env.FROM_EMAIL!,
-    to: caseData.customer_email,
-    subject: '【不動産査定】地番のご入力をお願いします',
-    html: `
-      <p>${caseData.customer_name} 様</p>
-      <p>登記情報の確認が完了しました。</p>
-      <p><strong>筆数: ${parcel_count}筆 / 査定料金: ${total.toLocaleString()}円</strong></p>
-      ${parcel_count > 2 ? `<p>（基本料金980円 + 追加${parcel_count - 2}筆 × 350円）</p>` : ''}
-      <p>以下のURLから地番をご入力ください。</p>
-      <p><a href="${appUrl}/case/${id}">地番入力ページ</a></p>
-      <p>よろしくお願いいたします。</p>
-    `,
-  })
+  if (process.env.RESEND_API_KEY) {
+    const { Resend } = await import('resend')
+    const resend = new Resend(process.env.RESEND_API_KEY)
+    await resend.emails.send({
+      from: process.env.FROM_EMAIL!,
+      to: caseData.customer_email,
+      subject: '【不動産査定】筆数・料金のご確認',
+      html: `
+        <p>${caseData.customer_name} 様</p>
+        <p>登記情報の確認が完了しました。</p>
+        <p><strong>筆数: ${parcel_count}筆 / 査定料金: ${total.toLocaleString()}円</strong></p>
+        ${parcel_count > 2 ? `<p>（基本料金980円 + 追加${parcel_count - 2}筆 × 350円）</p>` : ''}
+        <p>ご確認のほどよろしくお願いいたします。</p>
+        <p><a href="${appUrl}/case/${id}">査定状況を確認する</a></p>
+      `,
+    })
+  }
 
   return NextResponse.json({ case: caseData })
 }
