@@ -7,7 +7,7 @@ const STATUS_STEPS = [
   { key: 'card_saved', label: '登記情報確認中' },
   { key: 'parcel_confirmed', label: '料金確定' },
   { key: 'processing', label: 'AI分析中' },
-  { key: 'review_pending', label: '宅建士確認中' },
+  { key: 'review_pending', label: 'プロ確認中' },
   { key: 'completed', label: '完了' },
 ]
 

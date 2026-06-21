@@ -11,7 +11,7 @@ const notoSansJP = Noto_Sans_JP({
 
 export const metadata: Metadata = {
   title: "不動産簡易査定",
-  description: "AI × 宅建士による不動産簡易査定サービス",
+  description: "AI × プロによる不動産簡易査定サービス",
 };
 
 export default function RootLayout({

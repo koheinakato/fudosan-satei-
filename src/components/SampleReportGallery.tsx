@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Image from 'next/image'
 
 const PAGES = [1, 2, 3, 4, 5, 6]
 
@@ -32,11 +31,10 @@ export default function SampleReportGallery() {
             className="shrink-0 bg-white border border-[#ced4da] overflow-hidden cursor-zoom-in hover:border-[#5a5a5a] transition-colors"
             style={{ scrollSnapAlign: 'start', width: 'min(72vw, 320px)' }}
           >
-            <Image
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src={`/sample-report/page-${n}.png`}
               alt={`査定書サンプル ${n}ページ目`}
-              width={794}
-              height={1123}
               className="w-full h-auto"
             />
           </button>
@@ -54,7 +52,6 @@ export default function SampleReportGallery() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80"
           onClick={() => setLightbox(null)}
         >
-          {/* 前へ */}
           <button
             className="absolute left-3 top-1/2 -translate-y-1/2 text-white text-3xl px-3 py-2 opacity-70 hover:opacity-100"
             onClick={(e) => { e.stopPropagation(); setLightbox((p) => p !== null ? Math.max(p - 1, 1) : null) }}
@@ -66,11 +63,10 @@ export default function SampleReportGallery() {
             className="relative max-h-[90vh] max-w-[90vw] overflow-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <Image
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src={`/sample-report/page-${lightbox}.png`}
               alt={`査定書サンプル ${lightbox}ページ目`}
-              width={794}
-              height={1123}
               className="h-[90vh] w-auto object-contain"
             />
             <p className="absolute bottom-2 left-0 right-0 text-center text-white/60 text-xs font-helvetica tracking-widest">
@@ -78,7 +74,6 @@ export default function SampleReportGallery() {
             </p>
           </div>
 
-          {/* 次へ */}
           <button
             className="absolute right-3 top-1/2 -translate-y-1/2 text-white text-3xl px-3 py-2 opacity-70 hover:opacity-100"
             onClick={(e) => { e.stopPropagation(); setLightbox((p) => p !== null ? Math.min(p + 1, PAGES.length) : null) }}
@@ -86,7 +81,6 @@ export default function SampleReportGallery() {
             ›
           </button>
 
-          {/* 閉じる */}
           <button
             className="absolute top-4 right-4 text-white/70 hover:text-white text-2xl"
             onClick={() => setLightbox(null)}

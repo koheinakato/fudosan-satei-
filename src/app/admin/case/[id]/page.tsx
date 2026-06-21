@@ -203,7 +203,7 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
           <CardContent className="space-y-4">
             {caseData.status === 'processing' && (
               <Button onClick={() => handleUpdateStatus('review_pending')} disabled={loading} variant="outline">
-                宅建士確認中に変更
+                プロ確認中に変更
               </Button>
             )}
             {caseData.status === 'review_pending' && (

@@ -11,7 +11,7 @@ const STATUS_LABELS: Record<string, { label: string; variant: 'default' | 'secon
   parcel_confirmed: { label: '地番入力待ち', variant: 'outline' },
   lot_input_pending: { label: '地番入力待ち', variant: 'outline' },
   processing: { label: 'AI分析中', variant: 'default' },
-  review_pending: { label: '宅建士確認中', variant: 'outline' },
+  review_pending: { label: 'プロ確認中', variant: 'outline' },
   completed: { label: '完了', variant: 'secondary' },
   cancelled: { label: 'キャンセル', variant: 'destructive' },
 }

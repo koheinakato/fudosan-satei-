@@ -48,7 +48,7 @@ function CompleteContent() {
             <div className="flex gap-4">
               <span className="font-helvetica text-[11px] text-[#5a5a5a] tracking-[0.05em] w-4 shrink-0 mt-0.5">03</span>
               <div>
-                <p className="text-sm text-[#212529]">AIが分析し、宅建士が査定レポートを作成します</p>
+                <p className="text-sm text-[#212529]">AIが分析し、プロが査定レポートを作成します</p>
                 <p className="text-xs text-[#5a5a5a] mt-0.5">完成後、メールでレポートをお送りします</p>
               </div>
             </div>
