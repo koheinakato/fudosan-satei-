@@ -97,9 +97,14 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
   return (
     <main className="min-h-screen bg-stone-50 py-8 px-4">
       <div className="max-w-2xl mx-auto space-y-6">
-        <div className="flex items-center gap-3">
-          <button onClick={() => router.push('/admin')} className="text-stone-400 hover:text-stone-600">← 一覧</button>
-          <h1 className="text-xl font-bold text-stone-800">案件詳細</h1>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <button onClick={() => router.push('/admin')} className="text-stone-400 hover:text-stone-600">← 一覧</button>
+            <h1 className="text-xl font-bold text-stone-800">案件詳細</h1>
+          </div>
+          <button onClick={() => router.push(`/admin/case/${id}/report`)} className="text-sm px-4 py-1.5 bg-stone-800 text-white rounded hover:bg-stone-700">
+            査定書作成 →
+          </button>
         </div>
 
         {/* 基本情報 */}
