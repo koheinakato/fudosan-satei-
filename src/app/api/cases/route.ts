@@ -10,12 +10,18 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: '必須項目が不足しています' }, { status: 400 })
   }
 
-  const stripeCustomer = await stripe.customers.create({
-    name: customer_name,
-    email: customer_email,
-    phone: customer_phone,
-    metadata: { property_address },
-  })
+  let stripeCustomer
+  try {
+    stripeCustomer = await stripe.customers.create({
+      name: customer_name,
+      email: customer_email,
+      phone: customer_phone,
+      metadata: { property_address },
+    })
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Stripe error'
+    return NextResponse.json({ error: `Stripe: ${msg}` }, { status: 500 })
+  }
 
   const { data, error } = await supabaseAdmin
     .from('cases')
