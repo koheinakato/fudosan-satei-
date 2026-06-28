@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, use } from 'react'
+import { useEffect, useState, use, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -21,10 +21,13 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
   const router = useRouter()
   const [caseData, setCaseData] = useState<Case | null>(null)
   const [parcelCount, setParcelCount] = useState('')
+  const [parsedLots, setParsedLots] = useState<string[]>([])
   const [adminNotes, setAdminNotes] = useState('')
   const [reportUrl, setReportUrl] = useState('')
   const [loading, setLoading] = useState(false)
+  const [parsing, setParsing] = useState(false)
   const [message, setMessage] = useState('')
+  const pdfInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetch(`/api/cases/${id}`)
@@ -34,8 +37,48 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
         setAdminNotes(d.case?.admin_notes || '')
         setParcelCount(d.case?.parcel_count?.toString() || '')
         setReportUrl(d.case?.report_url || '')
+        if (d.case?.lot_numbers) setParsedLots(d.case.lot_numbers as string[])
       })
   }, [id])
+
+  const handlePdfParse = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setParsing(true)
+    setMessage('登記PDFを解析中...')
+
+    try {
+      const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist')
+      GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+      const arrayBuffer = await file.arrayBuffer()
+      const pdf = await getDocument({ data: arrayBuffer }).promise
+      let fullText = ''
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i)
+        const content = await page.getTextContent()
+        fullText += content.items.map((item) => ('str' in item ? item.str : '')).join(' ') + '\n'
+      }
+
+      const res = await fetch(`/api/cases/${id}/parse-parcels`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: fullText }),
+      })
+      const d = await res.json()
+      if (d.parcelCount) {
+        setParcelCount(String(d.parcelCount))
+        setParsedLots(d.lotNumbers || [])
+        setMessage(`解析完了: ${d.parcelCount}筆 / ${d.address || ''}`)
+      } else {
+        setMessage(`解析失敗: ${d.error}`)
+      }
+    } catch (err) {
+      setMessage(`PDFの読み込みに失敗しました: ${err instanceof Error ? err.message : ''}`)
+    } finally {
+      setParsing(false)
+      if (pdfInputRef.current) pdfInputRef.current.value = ''
+    }
+  }
 
   const handleConfirmParcels = async () => {
     const count = parseInt(parcelCount)
@@ -142,8 +185,39 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
           <Card className="border-amber-200">
             <CardHeader><CardTitle>筆数の確定・請求</CardTitle></CardHeader>
             <CardContent className="space-y-4">
+
+              {/* PDF自動解析 */}
+              <div className="bg-stone-50 border border-stone-200 rounded-lg p-4 space-y-2">
+                <p className="text-sm font-medium text-stone-700">登記PDFから自動解析</p>
+                <p className="text-xs text-stone-400">登記簿謄本のPDFをアップロードすると筆数・地番を自動で読み取ります</p>
+                <div className="flex gap-2 items-center">
+                  <input
+                    ref={pdfInputRef}
+                    type="file"
+                    accept="application/pdf"
+                    onChange={handlePdfParse}
+                    disabled={parsing}
+                    className="text-xs text-stone-500 file:mr-2 file:py-1.5 file:px-3 file:border file:border-stone-300 file:bg-white file:text-stone-700 file:text-xs file:cursor-pointer hover:file:bg-stone-50"
+                  />
+                  {parsing && <span className="text-xs text-amber-600 animate-pulse">AI解析中...</span>}
+                </div>
+                {parsedLots.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-xs text-stone-500 mb-1">解析された地番:</p>
+                    <ul className="text-xs text-stone-700 space-y-0.5">
+                      {parsedLots.map((lot, i) => (
+                        <li key={i} className="flex gap-1">
+                          <span className="text-stone-400">{i + 1}.</span>
+                          <span>{lot}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-2">
-                <Label>筆数（登記情報確認後に入力）</Label>
+                <Label>筆数</Label>
                 <div className="flex gap-3 items-center">
                   <Input
                     type="number"
