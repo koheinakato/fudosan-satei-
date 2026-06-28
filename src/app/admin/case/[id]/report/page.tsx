@@ -34,6 +34,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
   const [generating, setGenerating] = useState(false)
   const [parsing, setParsing] = useState(false)
   const [pdfLoading, setPdfLoading] = useState(false)
+  const [fetchingRosenka, setFetchingRosenka] = useState(false)
   const [message, setMessage] = useState('')
 
   // Property info
@@ -219,6 +220,30 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
     }
   }
 
+  const fetchRosenka = async () => {
+    if (!info.address) { setMessage('先に所在地を入力してください'); return }
+    setFetchingRosenka(true)
+    setMessage('路線価を自動取得中...')
+    try {
+      const res = await fetch(`/api/cases/${id}/fetch-rosenka`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: info.address }),
+      })
+      const d = await res.json()
+      if (d.rosenka) {
+        setLand(prev => ({ ...prev, rosenka: d.rosenka }))
+        setMessage(`路線価取得完了: ${d.rosenka.toLocaleString()}円/㎡（${d.confidence}精度・${d.basis}）`)
+      } else {
+        setMessage(`取得失敗: ${d.error}`)
+      }
+    } catch {
+      setMessage('路線価の取得に失敗しました')
+    } finally {
+      setFetchingRosenka(false)
+    }
+  }
+
   const generateOpinion = async () => {
     setGenerating(true)
     setMessage('Claude AIで所見を生成中...')
@@ -399,10 +424,32 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
           <section>
             <h2 className="text-xs font-medium text-[#5a5a5a] mb-2 uppercase tracking-widest">土地の概要</h2>
             <div className="grid grid-cols-2 gap-2">
+              {/* 路線価 - 自動取得ボタン付き */}
+              <div>
+                <label className="block text-[10px] text-[#9a9a9a] mb-0.5">地積 (㎡)</label>
+                <input type="number" step="0.01" value={land.totalArea || ''} placeholder="0.00"
+                  onChange={e => setLand(prev => ({ ...prev, totalArea: parseFloat(e.target.value) || 0 }))}
+                  className="w-full border border-[#ced4da] rounded px-2 py-1 text-xs text-[#5a5a5a] focus:outline-none focus:border-[#5a5a5a]" />
+              </div>
+              <div>
+                <label className="block text-[10px] text-[#9a9a9a] mb-0.5">セットバック (㎡)</label>
+                <input type="number" step="0.01" value={land.setback || ''} placeholder="0.00"
+                  onChange={e => setLand(prev => ({ ...prev, setback: parseFloat(e.target.value) || 0 }))}
+                  className="w-full border border-[#ced4da] rounded px-2 py-1 text-xs text-[#5a5a5a] focus:outline-none focus:border-[#5a5a5a]" />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-[10px] text-[#9a9a9a] mb-0.5">路線価 (円/㎡)</label>
+                <div className="flex gap-1">
+                  <input type="number" value={land.rosenka || ''} placeholder="80000"
+                    onChange={e => setLand(prev => ({ ...prev, rosenka: parseInt(e.target.value) || 0 }))}
+                    className="flex-1 border border-[#ced4da] rounded px-2 py-1 text-xs text-[#5a5a5a] focus:outline-none focus:border-[#5a5a5a]" />
+                  <button onClick={fetchRosenka} disabled={fetchingRosenka}
+                    className="text-[10px] px-2 py-1 border border-[#5a5a5a] text-[#5a5a5a] hover:bg-[#5a5a5a] hover:text-white transition-colors disabled:opacity-40 whitespace-nowrap">
+                    {fetchingRosenka ? '取得中...' : '自動取得'}
+                  </button>
+                </div>
+              </div>
               {([
-                ['地積 (㎡)', 'totalArea', 'number', '0.00'],
-                ['セットバック (㎡)', 'setback', 'number', '0.00'],
-                ['路線価 (円/㎡)', 'rosenka', 'number', '80000'],
                 ['前面道路', 'usefulRoad', 'text', '南東側4.5m'],
                 ['沿線名', 'railway', 'text', 'JR呉線'],
                 ['最寄駅', 'station', 'text', '呉駅'],
