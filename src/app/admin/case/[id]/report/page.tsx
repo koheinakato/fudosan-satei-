@@ -35,6 +35,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
   const [parsing, setParsing] = useState(false)
   const [pdfLoading, setPdfLoading] = useState(false)
   const [fetchingRosenka, setFetchingRosenka] = useState(false)
+  const [fetchingMap, setFetchingMap] = useState<'rosenka' | 'zone' | null>(null)
   const [message, setMessage] = useState('')
 
   // Property info
@@ -241,6 +242,31 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
       setMessage('路線価の取得に失敗しました')
     } finally {
       setFetchingRosenka(false)
+    }
+  }
+
+  const fetchMap = async (type: 'rosenka' | 'zone') => {
+    if (!info.address) { setMessage('先に所在地を入力してください'); return }
+    setFetchingMap(type)
+    setMessage(`${type === 'rosenka' ? '路線価住宅地図' : '用途地域図'}を自動取得中...`)
+    try {
+      const res = await fetch(`/api/cases/${id}/fetch-map`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address: info.address, type }),
+      })
+      const d = await res.json()
+      if (d.image) {
+        if (type === 'rosenka') setRosenkaMap(d.image)
+        else setZoneMap(d.image)
+        setMessage(`${type === 'rosenka' ? '路線価住宅地図' : '用途地域図'}を取得しました`)
+      } else {
+        setMessage(`取得失敗: ${d.error}`)
+      }
+    } catch {
+      setMessage('地図の取得に失敗しました')
+    } finally {
+      setFetchingMap(null)
     }
   }
 
@@ -566,12 +592,26 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
             <h2 className="text-xs font-medium text-[#5a5a5a] mb-2 uppercase tracking-widest">地図・登記資料 画像</h2>
             <div className="space-y-2">
               <div>
-                <label className="block text-[10px] text-[#9a9a9a] mb-0.5">路線価住宅地図</label>
+                <div className="flex items-center justify-between mb-0.5">
+                  <label className="text-[10px] text-[#9a9a9a]">路線価住宅地図</label>
+                  <button onClick={() => fetchMap('rosenka')} disabled={fetchingMap !== null}
+                    className="text-[9px] px-1.5 py-0.5 border border-[#5a5a5a] text-[#5a5a5a] hover:bg-[#5a5a5a] hover:text-white transition-colors disabled:opacity-40">
+                    {fetchingMap === 'rosenka' ? '取得中...' : '自動取得'}
+                  </button>
+                </div>
+                {rosenkaMap && <img src={rosenkaMap} alt="路線価住宅地図プレビュー" className="w-full h-24 object-cover mb-1 border border-[#ced4da]" />}
                 <input type="file" accept="image/*" onChange={handleImageUpload(setRosenkaMap)}
                   className="w-full text-[10px] text-[#9a9a9a] file:mr-2 file:py-1 file:px-2 file:border file:border-[#ced4da] file:bg-white file:text-[#5a5a5a] file:text-[10px]" />
               </div>
               <div>
-                <label className="block text-[10px] text-[#9a9a9a] mb-0.5">用途地域図</label>
+                <div className="flex items-center justify-between mb-0.5">
+                  <label className="text-[10px] text-[#9a9a9a]">用途地域図</label>
+                  <button onClick={() => fetchMap('zone')} disabled={fetchingMap !== null}
+                    className="text-[9px] px-1.5 py-0.5 border border-[#5a5a5a] text-[#5a5a5a] hover:bg-[#5a5a5a] hover:text-white transition-colors disabled:opacity-40">
+                    {fetchingMap === 'zone' ? '取得中...' : '自動取得'}
+                  </button>
+                </div>
+                {zoneMap && <img src={zoneMap} alt="用途地域図プレビュー" className="w-full h-24 object-cover mb-1 border border-[#ced4da]" />}
                 <input type="file" accept="image/*" onChange={handleImageUpload(setZoneMap)}
                   className="w-full text-[10px] text-[#9a9a9a] file:mr-2 file:py-1 file:px-2 file:border file:border-[#ced4da] file:bg-white file:text-[#5a5a5a] file:text-[10px]" />
               </div>
