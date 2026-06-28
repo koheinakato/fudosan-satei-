@@ -36,6 +36,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
   const [pdfLoading, setPdfLoading] = useState(false)
   const [fetchingRosenka, setFetchingRosenka] = useState(false)
   const [fetchingMap, setFetchingMap] = useState<'rosenka' | 'zone' | null>(null)
+  const [fetchingCases, setFetchingCases] = useState(false)
   const [message, setMessage] = useState('')
 
   // Property info
@@ -267,6 +268,34 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
       setMessage('地図の取得に失敗しました')
     } finally {
       setFetchingMap(null)
+    }
+  }
+
+  const fetchCases = async () => {
+    if (!info.address) { setMessage('先に所在地を入力してください'); return }
+    setFetchingCases(true)
+    setMessage('取引事例をAI生成中...')
+    try {
+      const res = await fetch(`/api/cases/${id}/fetch-cases`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          address: info.address,
+          propertyType: caseData?.property_type,
+          rosenka: land.rosenka,
+        }),
+      })
+      const d = await res.json()
+      if (d.cases) {
+        setCases(d.cases)
+        setMessage('取引事例を自動入力しました（内容を確認・修正してください）')
+      } else {
+        setMessage(`取得失敗: ${d.error}`)
+      }
+    } catch {
+      setMessage('取引事例の取得に失敗しました')
+    } finally {
+      setFetchingCases(false)
     }
   }
 
@@ -525,7 +554,13 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
 
           {/* 取引事例 */}
           <section>
-            <h2 className="text-xs font-medium text-[#5a5a5a] mb-2 uppercase tracking-widest">土地 取引事例</h2>
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-xs font-medium text-[#5a5a5a] uppercase tracking-widest">土地 取引事例</h2>
+              <button onClick={fetchCases} disabled={fetchingCases}
+                className="text-[10px] px-2 py-1 border border-[#5a5a5a] text-[#5a5a5a] hover:bg-[#5a5a5a] hover:text-white transition-colors disabled:opacity-40">
+                {fetchingCases ? 'AI生成中...' : 'AI自動入力'}
+              </button>
+            </div>
             <table className="w-full text-[9px] border-collapse">
               <thead>
                 <tr>
