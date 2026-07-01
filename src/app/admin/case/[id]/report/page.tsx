@@ -176,14 +176,39 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
     reader.readAsDataURL(file)
   }
 
-  const handleRegistryImagesUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleRegistryFilesUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
-    const readers = files.map(f => new Promise<string>(resolve => {
-      const r = new FileReader()
-      r.onload = ev => resolve(ev.target?.result as string)
-      r.readAsDataURL(f)
-    }))
-    Promise.all(readers).then(imgs => setRegistryImages(imgs))
+    if (!files.length) return
+    setMessage('登記資料を読み込み中...')
+    const newImages: string[] = []
+    for (const file of files) {
+      if (file.type === 'application/pdf') {
+        const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist')
+        GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js'
+        const buf = await file.arrayBuffer()
+        const pdf = await getDocument({ data: new Uint8Array(buf) }).promise
+        for (let p = 1; p <= pdf.numPages; p++) {
+          const page = await pdf.getPage(p)
+          const viewport = page.getViewport({ scale: 2 })
+          const canvas = document.createElement('canvas')
+          canvas.width = viewport.width
+          canvas.height = viewport.height
+          const ctx = canvas.getContext('2d')!
+          await page.render({ canvasContext: ctx, viewport, canvas } as Parameters<typeof page.render>[0]).promise
+          newImages.push(canvas.toDataURL('image/png'))
+        }
+      } else {
+        const dataUrl = await new Promise<string>(resolve => {
+          const r = new FileReader()
+          r.onload = ev => resolve(ev.target?.result as string)
+          r.readAsDataURL(file)
+        })
+        newImages.push(dataUrl)
+      }
+    }
+    setRegistryImages(prev => [...prev, ...newImages])
+    setMessage(`登記資料を${newImages.length}ページ追加しました`)
+    e.target.value = ''
   }
 
   const handleRegistryPdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -651,9 +676,28 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                   className="w-full text-[10px] text-[#9a9a9a] file:mr-2 file:py-1 file:px-2 file:border file:border-[#ced4da] file:bg-white file:text-[#5a5a5a] file:text-[10px]" />
               </div>
               <div>
-                <label className="block text-[10px] text-[#9a9a9a] mb-0.5">登記資料（複数可）</label>
-                <input type="file" accept="image/*" multiple onChange={handleRegistryImagesUpload}
+                <label className="block text-[10px] text-[#9a9a9a] mb-1">登記資料（PDF・画像 複数可）</label>
+                {registryImages.length > 0 && (
+                  <div className="grid grid-cols-3 gap-1 mb-2">
+                    {registryImages.map((src, i) => (
+                      <div key={i} className="relative group">
+                        <img src={src} alt={`登記資料 ${i + 1}`} className="w-full h-16 object-cover border border-[#ced4da]" />
+                        <button
+                          onClick={() => setRegistryImages(prev => prev.filter((_, idx) => idx !== i))}
+                          className="absolute top-0.5 right-0.5 w-4 h-4 bg-black/60 text-white text-[8px] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                        >✕</button>
+                        <span className="absolute bottom-0.5 left-0.5 text-[7px] text-white bg-black/40 px-0.5">{i + 1}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <input type="file" accept="image/*,.pdf" multiple onChange={handleRegistryFilesUpload}
                   className="w-full text-[10px] text-[#9a9a9a] file:mr-2 file:py-1 file:px-2 file:border file:border-[#ced4da] file:bg-white file:text-[#5a5a5a] file:text-[10px]" />
+                {registryImages.length > 0 && (
+                  <button onClick={() => setRegistryImages([])} className="mt-1 text-[9px] text-[#9a9a9a] hover:text-red-500 underline">
+                    すべて削除
+                  </button>
+                )}
               </div>
             </div>
           </section>
