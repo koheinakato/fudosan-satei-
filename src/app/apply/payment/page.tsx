@@ -56,6 +56,7 @@ function PaymentForm({ caseId }: { caseId: string }) {
         <div className="border border-[#ced4da] rounded px-3 py-3 bg-white">
           <CardElement
             options={{
+              hidePostalCode: true,
               style: {
                 base: {
                   fontSize: '15px',
