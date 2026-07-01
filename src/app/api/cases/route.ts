@@ -42,6 +42,43 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  if (process.env.RESEND_API_KEY) {
+    const PROPERTY_TYPE_LABELS: Record<string, string> = { house: '戸建て', mansion: 'マンション', land: '土地' }
+    const PURPOSE_LABELS: Record<string, string> = { sell: '売却', inherit: '相続', other: 'その他' }
+
+    const { Resend } = await import('resend')
+    const resend = new Resend(process.env.RESEND_API_KEY)
+    await resend.emails.send({
+      from: process.env.FROM_EMAIL!,
+      to: customer_email,
+      subject: '【不動産査定】お申し込みを受け付けました',
+      html: `
+        <p style="font-family:'Helvetica Neue',Arial,sans-serif;color:#5a5a5a;line-height:1.8;">
+          ${customer_name} 様
+        </p>
+        <p style="font-family:'Helvetica Neue',Arial,sans-serif;color:#5a5a5a;line-height:1.8;">
+          不動産査定のお申し込みありがとうございます。<br>
+          内容を確認のうえ、担当者よりご連絡いたします。
+        </p>
+        <hr style="border:none;border-top:1px solid #ced4da;margin:24px 0;">
+        <table style="font-family:'Helvetica Neue',Arial,sans-serif;font-size:13px;color:#5a5a5a;border-collapse:collapse;width:100%;">
+          <tr><td style="padding:6px 0;color:#9a9a9a;width:140px;">お名前</td><td style="padding:6px 0;">${customer_name} 様</td></tr>
+          <tr><td style="padding:6px 0;color:#9a9a9a;">メールアドレス</td><td style="padding:6px 0;">${customer_email}</td></tr>
+          <tr><td style="padding:6px 0;color:#9a9a9a;">電話番号</td><td style="padding:6px 0;">${customer_phone}</td></tr>
+          <tr><td style="padding:6px 0;color:#9a9a9a;">物件所在地</td><td style="padding:6px 0;">${property_address}</td></tr>
+          <tr><td style="padding:6px 0;color:#9a9a9a;">物件種別</td><td style="padding:6px 0;">${PROPERTY_TYPE_LABELS[property_type] ?? property_type}</td></tr>
+          <tr><td style="padding:6px 0;color:#9a9a9a;">査定目的</td><td style="padding:6px 0;">${PURPOSE_LABELS[assessment_purpose] ?? assessment_purpose}</td></tr>
+        </table>
+        <hr style="border:none;border-top:1px solid #ced4da;margin:24px 0;">
+        <p style="font-family:'Helvetica Neue',Arial,sans-serif;font-size:12px;color:#9a9a9a;line-height:1.8;">
+          ぷらたなすきかく株式会社<br>
+          〒737-0811 広島県呉市西中央3-19-6<br>
+          noreply@platanus-p.com
+        </p>
+      `,
+    }).catch(() => {})
+  }
+
   return NextResponse.json({ case: data })
 }
 
