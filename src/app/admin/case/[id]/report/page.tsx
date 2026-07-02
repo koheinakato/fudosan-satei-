@@ -34,10 +34,9 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
   const [generating, setGenerating] = useState(false)
   const [parsing, setParsing] = useState(false)
   const [pdfLoading, setPdfLoading] = useState(false)
-  const [fetchingRosenka, setFetchingRosenka] = useState(false)
-  const [fetchingMap, setFetchingMap] = useState<'rosenka' | 'zone' | null>(null)
-  const [fetchingCases, setFetchingCases] = useState(false)
+  const [autoFetching, setAutoFetching] = useState(false)
   const [message, setMessage] = useState('')
+  const autoFetchDone = useRef(false)
 
   // Property info
   const [info, setInfo] = useState({
@@ -82,65 +81,78 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
   const [zoneMap, setZoneMap] = useState<string>('')
   const [registryImages, setRegistryImages] = useState<string[]>([])
 
-  // Load case
+  // Load case + auto-fetch everything
   useEffect(() => {
-    fetch(`/api/cases/${id}`)
-      .then(r => r.json())
-      .then(d => {
-        const c: Case = d.case
-        setCaseData(c)
-        setInfo(prev => ({
-          ...prev,
-          address: c.property_address || '',
-          clientName: c.customer_name ? `${c.customer_name} 様` : '',
-        }))
-      })
-  }, [id])
-
-  // 案件詳細ページでアップロードした登記データを引き継ぐ
-  useEffect(() => {
+    // 1. 登記データをlocalStorageから引き継ぎ
     try {
       const stored = localStorage.getItem(`registry_${id}`)
-      if (!stored) return
-      const data = JSON.parse(stored)
-
-      // 登記資料画像を自動セット
-      if (data.images?.length > 0) {
-        setRegistryImages(data.images)
-        setMessage('案件詳細の登記PDFデータを引き継ぎました')
-      }
-
-      // テキストから物件情報を自動入力
-      const combinedText = Object.values(data.texts || {}).join('\n')
-      if (combinedText.trim().length > 10) {
-        fetch(`/api/cases/${id}/parse-registry`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: combinedText }),
-        })
-          .then(r => r.json())
-          .then(parsed => {
-            if (!parsed.error) {
-              if (parsed.address) setInfo(prev => ({
-                ...prev,
-                address: parsed.address || prev.address,
-                jyukyoHyoji: parsed.jyukyoHyoji || prev.jyukyoHyoji,
-                chiban: parsed.chiban || prev.chiban,
-                kaheiNumber: parsed.kaheiNumber || prev.kaheiNumber,
-                propertyName: parsed.propertyName || prev.propertyName,
-              }))
-              if (parsed.landArea) setLand(prev => ({ ...prev, totalArea: parsed.landArea }))
-              if (parsed.floorArea) setBuilding(prev => ({
-                ...prev,
-                floorArea: parsed.floorArea,
-                structure: parsed.structure || prev.structure,
-                age: parsed.builtYear ? new Date().getFullYear() - parsed.builtYear : prev.age,
-              }))
-            }
+      if (stored) {
+        const data = JSON.parse(stored)
+        if (data.images?.length > 0) setRegistryImages(data.images)
+        const combinedText = Object.values(data.texts || {}).join('\n')
+        if (combinedText.trim().length > 10) {
+          fetch(`/api/cases/${id}/parse-registry`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text: combinedText }),
           })
-          .catch(() => {})
+            .then(r => r.json())
+            .then(parsed => {
+              if (!parsed.error) {
+                if (parsed.address) setInfo(prev => ({ ...prev, address: parsed.address || prev.address, jyukyoHyoji: parsed.jyukyoHyoji || prev.jyukyoHyoji, chiban: parsed.chiban || prev.chiban, kaheiNumber: parsed.kaheiNumber || prev.kaheiNumber, propertyName: parsed.propertyName || prev.propertyName }))
+                if (parsed.landArea) setLand(prev => ({ ...prev, totalArea: parsed.landArea }))
+                if (parsed.floorArea) setBuilding(prev => ({ ...prev, floorArea: parsed.floorArea, structure: parsed.structure || prev.structure, age: parsed.builtYear ? new Date().getFullYear() - parsed.builtYear : prev.age }))
+              }
+            }).catch(() => {})
+        }
       }
-    } catch { /* localStorage 読み込み失敗時は無視 */ }
+    } catch { /* ignore */ }
+
+    // 2. 案件データ読み込み → AI自動取得
+    fetch(`/api/cases/${id}`)
+      .then(r => r.json())
+      .then(async d => {
+        const c: Case = d.case
+        setCaseData(c)
+        const address = c.property_address || ''
+        setInfo(prev => ({ ...prev, address, clientName: c.customer_name ? `${c.customer_name} 様` : '' }))
+        if (!address || autoFetchDone.current) return
+        autoFetchDone.current = true
+        setAutoFetching(true)
+        setMessage('AI情報を自動取得中...')
+
+        // 路線価取得
+        let rosenkaVal = 0
+        try {
+          const rRes = await fetch(`/api/cases/${id}/fetch-rosenka`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address }),
+          })
+          const rData = await rRes.json()
+          if (rData.rosenka) { rosenkaVal = rData.rosenka; setLand(prev => ({ ...prev, rosenka: rData.rosenka })) }
+        } catch { /* ignore */ }
+
+        // 地図・取引事例を並列取得
+        await Promise.all([
+          fetch(`/api/cases/${id}/fetch-map`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address, type: 'rosenka' }),
+          }).then(r => r.json()).then(d => { if (d.image) setRosenkaMap(d.image) }).catch(() => {}),
+
+          fetch(`/api/cases/${id}/fetch-map`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address, type: 'zone' }),
+          }).then(r => r.json()).then(d => { if (d.image) setZoneMap(d.image) }).catch(() => {}),
+
+          fetch(`/api/cases/${id}/fetch-cases`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address, propertyType: c.property_type, rosenka: rosenkaVal }),
+          }).then(r => r.json()).then(d => { if (d.cases) setCases(d.cases) }).catch(() => {}),
+        ])
+
+        setAutoFetching(false)
+        setMessage('AI自動入力が完了しました（内容を確認・修正してください）')
+      })
   }, [id])
 
   // Calculations
@@ -293,82 +305,6 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
     }
   }
 
-  const fetchRosenka = async () => {
-    if (!info.address) { setMessage('先に所在地を入力してください'); return }
-    setFetchingRosenka(true)
-    setMessage('路線価を自動取得中...')
-    try {
-      const res = await fetch(`/api/cases/${id}/fetch-rosenka`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: info.address }),
-      })
-      const d = await res.json()
-      if (d.rosenka) {
-        setLand(prev => ({ ...prev, rosenka: d.rosenka }))
-        setMessage(`路線価取得完了: ${d.rosenka.toLocaleString()}円/㎡（${d.confidence}精度・${d.basis}）`)
-      } else {
-        setMessage(`取得失敗: ${d.error}`)
-      }
-    } catch {
-      setMessage('路線価の取得に失敗しました')
-    } finally {
-      setFetchingRosenka(false)
-    }
-  }
-
-  const fetchMap = async (type: 'rosenka' | 'zone') => {
-    if (!info.address) { setMessage('先に所在地を入力してください'); return }
-    setFetchingMap(type)
-    setMessage(`${type === 'rosenka' ? '路線価住宅地図' : '用途地域図'}を自動取得中...`)
-    try {
-      const res = await fetch(`/api/cases/${id}/fetch-map`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ address: info.address, type }),
-      })
-      const d = await res.json()
-      if (d.image) {
-        if (type === 'rosenka') setRosenkaMap(d.image)
-        else setZoneMap(d.image)
-        setMessage(`${type === 'rosenka' ? '路線価住宅地図' : '用途地域図'}を取得しました`)
-      } else {
-        setMessage(`取得失敗: ${d.error}`)
-      }
-    } catch {
-      setMessage('地図の取得に失敗しました')
-    } finally {
-      setFetchingMap(null)
-    }
-  }
-
-  const fetchCases = async () => {
-    if (!info.address) { setMessage('先に所在地を入力してください'); return }
-    setFetchingCases(true)
-    setMessage('取引事例をAI生成中...')
-    try {
-      const res = await fetch(`/api/cases/${id}/fetch-cases`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          address: info.address,
-          propertyType: caseData?.property_type,
-          rosenka: land.rosenka,
-        }),
-      })
-      const d = await res.json()
-      if (d.cases) {
-        setCases(d.cases)
-        setMessage('取引事例を自動入力しました（内容を確認・修正してください）')
-      } else {
-        setMessage(`取得失敗: ${d.error}`)
-      }
-    } catch {
-      setMessage('取引事例の取得に失敗しました')
-    } finally {
-      setFetchingCases(false)
-    }
-  }
 
   const generateOpinion = async () => {
     setGenerating(true)
@@ -565,15 +501,9 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
               </div>
               <div className="col-span-2">
                 <label className="block text-[10px] text-[#9a9a9a] mb-0.5">路線価 (円/㎡)</label>
-                <div className="flex gap-1">
-                  <input type="number" value={land.rosenka || ''} placeholder="80000"
-                    onChange={e => setLand(prev => ({ ...prev, rosenka: parseInt(e.target.value) || 0 }))}
-                    className="flex-1 border border-[#ced4da] rounded px-2 py-1 text-xs text-[#5a5a5a] focus:outline-none focus:border-[#5a5a5a]" />
-                  <button onClick={fetchRosenka} disabled={fetchingRosenka}
-                    className="text-[10px] px-2 py-1 border border-[#5a5a5a] text-[#5a5a5a] hover:bg-[#5a5a5a] hover:text-white transition-colors disabled:opacity-40 whitespace-nowrap">
-                    {fetchingRosenka ? '取得中...' : '自動取得'}
-                  </button>
-                </div>
+                <input type="number" value={land.rosenka || ''} placeholder="80000"
+                  onChange={e => setLand(prev => ({ ...prev, rosenka: parseInt(e.target.value) || 0 }))}
+                  className="w-full border border-[#ced4da] rounded px-2 py-1 text-xs text-[#5a5a5a] focus:outline-none focus:border-[#5a5a5a]" />
               </div>
               {([
                 ['前面道路', 'usefulRoad', 'text', '南東側4.5m'],
@@ -627,10 +557,6 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
           <section>
             <div className="flex items-center justify-between mb-2">
               <h2 className="text-xs font-medium text-[#5a5a5a] uppercase tracking-widest">土地 取引事例</h2>
-              <button onClick={fetchCases} disabled={fetchingCases}
-                className="text-[10px] px-2 py-1 border border-[#5a5a5a] text-[#5a5a5a] hover:bg-[#5a5a5a] hover:text-white transition-colors disabled:opacity-40">
-                {fetchingCases ? 'AI生成中...' : 'AI自動入力'}
-              </button>
             </div>
             <table className="w-full text-[9px] border-collapse">
               <thead>
@@ -698,26 +624,20 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
             <h2 className="text-xs font-medium text-[#5a5a5a] mb-2 uppercase tracking-widest">地図・登記資料 画像</h2>
             <div className="space-y-2">
               <div>
-                <div className="flex items-center justify-between mb-0.5">
-                  <label className="text-[10px] text-[#9a9a9a]">路線価住宅地図</label>
-                  <button onClick={() => fetchMap('rosenka')} disabled={fetchingMap !== null}
-                    className="text-[9px] px-1.5 py-0.5 border border-[#5a5a5a] text-[#5a5a5a] hover:bg-[#5a5a5a] hover:text-white transition-colors disabled:opacity-40">
-                    {fetchingMap === 'rosenka' ? '取得中...' : '自動取得'}
-                  </button>
-                </div>
-                {rosenkaMap && <img src={rosenkaMap} alt="路線価住宅地図プレビュー" className="w-full h-24 object-cover mb-1 border border-[#ced4da]" />}
+                <label className="block text-[10px] text-[#9a9a9a] mb-0.5">路線価住宅地図</label>
+                {rosenkaMap
+                  ? <img src={rosenkaMap} alt="路線価住宅地図プレビュー" className="w-full h-24 object-cover mb-1 border border-[#ced4da]" />
+                  : <p className="text-[9px] text-[#9a9a9a] mb-1">{autoFetching ? '取得中...' : '取得できませんでした'}</p>
+                }
                 <input type="file" accept="image/*" onChange={handleImageUpload(setRosenkaMap)}
                   className="w-full text-[10px] text-[#9a9a9a] file:mr-2 file:py-1 file:px-2 file:border file:border-[#ced4da] file:bg-white file:text-[#5a5a5a] file:text-[10px]" />
               </div>
               <div>
-                <div className="flex items-center justify-between mb-0.5">
-                  <label className="text-[10px] text-[#9a9a9a]">用途地域図</label>
-                  <button onClick={() => fetchMap('zone')} disabled={fetchingMap !== null}
-                    className="text-[9px] px-1.5 py-0.5 border border-[#5a5a5a] text-[#5a5a5a] hover:bg-[#5a5a5a] hover:text-white transition-colors disabled:opacity-40">
-                    {fetchingMap === 'zone' ? '取得中...' : '自動取得'}
-                  </button>
-                </div>
-                {zoneMap && <img src={zoneMap} alt="用途地域図プレビュー" className="w-full h-24 object-cover mb-1 border border-[#ced4da]" />}
+                <label className="block text-[10px] text-[#9a9a9a] mb-0.5">用途地域図</label>
+                {zoneMap
+                  ? <img src={zoneMap} alt="用途地域図プレビュー" className="w-full h-24 object-cover mb-1 border border-[#ced4da]" />
+                  : <p className="text-[9px] text-[#9a9a9a] mb-1">{autoFetching ? '取得中...' : '取得できませんでした'}</p>
+                }
                 <input type="file" accept="image/*" onChange={handleImageUpload(setZoneMap)}
                   className="w-full text-[10px] text-[#9a9a9a] file:mr-2 file:py-1 file:px-2 file:border file:border-[#ced4da] file:bg-white file:text-[#5a5a5a] file:text-[10px]" />
               </div>
