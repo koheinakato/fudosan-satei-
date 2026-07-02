@@ -49,7 +49,7 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
 
     try {
       const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist')
-      GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js'
+      GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@6.0.227/build/pdf.worker.min.mjs`
       const arrayBuffer = await file.arrayBuffer()
       const pdf = await getDocument({ data: arrayBuffer }).promise
       let fullText = ''
