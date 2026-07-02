@@ -264,7 +264,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
     setMessage('登記PDFを解析中...')
     try {
       const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist')
-      GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js'
+      GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
       const buf = await file.arrayBuffer()
       const pdf = await getDocument({ data: new Uint8Array(buf) }).promise
       let text = ''
