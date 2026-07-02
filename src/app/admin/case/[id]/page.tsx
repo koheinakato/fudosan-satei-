@@ -47,7 +47,7 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
     setMessage(`${type === 'land' ? '土地' : '建物'}登記PDFを解析中...`)
     try {
       const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist')
-      GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@6.0.227/build/pdf.worker.min.mjs`
+      GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
       const arrayBuffer = await file.arrayBuffer()
       const pdf = await getDocument({ data: arrayBuffer }).promise
 

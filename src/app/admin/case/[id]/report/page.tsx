@@ -230,7 +230,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
     for (const file of files) {
       if (file.type === 'application/pdf') {
         const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist')
-        GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@6.0.227/build/pdf.worker.min.mjs`
+        GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
         const buf = await file.arrayBuffer()
         const pdf = await getDocument({ data: new Uint8Array(buf) }).promise
         for (let p = 1; p <= pdf.numPages; p++) {
