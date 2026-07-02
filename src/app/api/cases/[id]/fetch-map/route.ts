@@ -44,8 +44,13 @@ export async function POST(req: Request) {
     `&key=${apiKey}`
 
   const imgRes = await fetch(mapUrl)
-  if (!imgRes.ok) {
-    return NextResponse.json({ error: `地図取得失敗: ${imgRes.statusText}` }, { status: 500 })
+  const contentType = imgRes.headers.get('content-type') || ''
+
+  if (!imgRes.ok || !contentType.includes('image')) {
+    const body = await imgRes.text()
+    return NextResponse.json({
+      error: `Google Maps APIエラー (${imgRes.status}): ${body.slice(0, 300)}`,
+    }, { status: 500 })
   }
 
   const buffer = await imgRes.arrayBuffer()
