@@ -25,9 +25,10 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
   const [adminNotes, setAdminNotes] = useState('')
   const [reportUrl, setReportUrl] = useState('')
   const [loading, setLoading] = useState(false)
-  const [parsing, setParsing] = useState(false)
+  const [parsing, setParsing] = useState<'land' | 'building' | null>(null)
   const [message, setMessage] = useState('')
-  const pdfInputRef = useRef<HTMLInputElement>(null)
+  const landPdfInputRef = useRef<HTMLInputElement>(null)
+  const buildingPdfInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     fetch(`/api/cases/${id}`)
@@ -41,12 +42,9 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
       })
   }, [id])
 
-  const handlePdfParse = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setParsing(true)
-    setMessage('登記PDFを解析中...')
-
+  const parsePdf = async (file: File, type: 'land' | 'building') => {
+    setParsing(type)
+    setMessage(`${type === 'land' ? '土地' : '建物'}登記PDFを解析中...`)
     try {
       const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist')
       GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@6.0.227/build/pdf.worker.min.mjs`
@@ -65,18 +63,23 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
         body: JSON.stringify({ text: fullText }),
       })
       const d = await res.json()
-      if (d.parcelCount) {
-        setParcelCount(String(d.parcelCount))
-        setParsedLots(d.lotNumbers || [])
-        setMessage(`解析完了: ${d.parcelCount}筆 / ${d.address || ''}`)
+      if (d.parcelCount !== undefined && d.parcelCount !== null) {
+        if (type === 'land') {
+          setParcelCount(String(d.parcelCount))
+          setParsedLots(d.lotNumbers || [])
+          setMessage(`土地登記 解析完了: ${d.parcelCount}筆 / ${d.address || ''}`)
+        } else {
+          setMessage(`建物登記 解析完了: ${d.address || ''}（筆数は土地登記から取得済み）`)
+        }
       } else {
         setMessage(`解析失敗: ${d.error}`)
       }
     } catch (err) {
       setMessage(`PDFの読み込みに失敗しました: ${err instanceof Error ? err.message : ''}`)
     } finally {
-      setParsing(false)
-      if (pdfInputRef.current) pdfInputRef.current.value = ''
+      setParsing(null)
+      if (type === 'land' && landPdfInputRef.current) landPdfInputRef.current.value = ''
+      if (type === 'building' && buildingPdfInputRef.current) buildingPdfInputRef.current.value = ''
     }
   }
 
@@ -187,22 +190,44 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
             <CardContent className="space-y-4">
 
               {/* PDF自動解析 */}
-              <div className="bg-stone-50 border border-stone-200 rounded-lg p-4 space-y-2">
+              <div className="bg-stone-50 border border-stone-200 rounded-lg p-4 space-y-3">
                 <p className="text-sm font-medium text-stone-700">登記PDFから自動解析</p>
-                <p className="text-xs text-stone-400">登記簿謄本のPDFをアップロードすると筆数・地番を自動で読み取ります</p>
-                <div className="flex gap-2 items-center">
-                  <input
-                    ref={pdfInputRef}
-                    type="file"
-                    accept="application/pdf"
-                    onChange={handlePdfParse}
-                    disabled={parsing}
-                    className="text-xs text-stone-500 file:mr-2 file:py-1.5 file:px-3 file:border file:border-stone-300 file:bg-white file:text-stone-700 file:text-xs file:cursor-pointer hover:file:bg-stone-50"
-                  />
-                  {parsing && <span className="text-xs text-amber-600 animate-pulse">AI解析中...</span>}
+                <p className="text-xs text-stone-400">土地・建物それぞれの登記PDFをアップロードしてください。筆数は土地登記から取得します。</p>
+
+                <div className="space-y-2">
+                  <div>
+                    <p className="text-xs text-stone-500 mb-1">土地登記（筆数・地番を取得）</p>
+                    <div className="flex gap-2 items-center">
+                      <input
+                        ref={landPdfInputRef}
+                        type="file"
+                        accept="application/pdf"
+                        onChange={e => { const f = e.target.files?.[0]; if (f) parsePdf(f, 'land') }}
+                        disabled={parsing !== null}
+                        className="text-xs text-stone-500 file:mr-2 file:py-1.5 file:px-3 file:border file:border-stone-300 file:bg-white file:text-stone-700 file:text-xs file:cursor-pointer hover:file:bg-stone-50"
+                      />
+                      {parsing === 'land' && <span className="text-xs text-amber-600 animate-pulse">解析中...</span>}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-stone-500 mb-1">建物登記（参考）</p>
+                    <div className="flex gap-2 items-center">
+                      <input
+                        ref={buildingPdfInputRef}
+                        type="file"
+                        accept="application/pdf"
+                        onChange={e => { const f = e.target.files?.[0]; if (f) parsePdf(f, 'building') }}
+                        disabled={parsing !== null}
+                        className="text-xs text-stone-500 file:mr-2 file:py-1.5 file:px-3 file:border file:border-stone-300 file:bg-white file:text-stone-700 file:text-xs file:cursor-pointer hover:file:bg-stone-50"
+                      />
+                      {parsing === 'building' && <span className="text-xs text-amber-600 animate-pulse">解析中...</span>}
+                    </div>
+                  </div>
                 </div>
+
                 {parsedLots.length > 0 && (
-                  <div className="mt-2">
+                  <div className="pt-1 border-t border-stone-200">
                     <p className="text-xs text-stone-500 mb-1">解析された地番:</p>
                     <ul className="text-xs text-stone-700 space-y-0.5">
                       {parsedLots.map((lot, i) => (
