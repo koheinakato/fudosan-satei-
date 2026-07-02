@@ -286,8 +286,8 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
       if (parsed.landArea) setLand(prev => ({ ...prev, totalArea: parsed.landArea }))
       if (parsed.floorArea) setBuilding(prev => ({ ...prev, floorArea: parsed.floorArea, structure: parsed.structure || prev.structure, age: parsed.builtYear ? new Date().getFullYear() - parsed.builtYear : prev.age }))
       setMessage('登記情報を自動入力しました')
-    } catch {
-      setMessage('PDF解析に失敗しました。手動で入力してください。')
+    } catch (err) {
+      setMessage(`PDF解析エラー: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setParsing(false)
     }
