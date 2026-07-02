@@ -44,8 +44,9 @@ ${rosenkaHint}
   })
 
   const raw = message.content[0].type === 'text' ? message.content[0].text.trim() : '[]'
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
   try {
-    const result = JSON.parse(raw)
+    const result = JSON.parse(cleaned)
     if (!Array.isArray(result) || result.length === 0) throw new Error('invalid')
     const cases = result.map((c: { name?: string; price?: number; timeCorrect?: number; areaCorrect?: number }, i: number) => ({
       id: i + 1,

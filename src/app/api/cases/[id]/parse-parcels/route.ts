@@ -7,7 +7,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'ANTHROPIC_API_KEY が設定されていません' }, { status: 500 })
   }
   if (!text || text.trim().length < 10) {
-    return NextResponse.json({ error: 'テキストが短すぎます' }, { status: 400 })
+    return NextResponse.json({ error: 'PDFからテキストを抽出できませんでした。スキャン画像PDFの場合は手動で入力してください。' }, { status: 400 })
   }
 
   const { Anthropic } = await import('@anthropic-ai/sdk')
@@ -33,14 +33,15 @@ ${text.slice(0, 4000)}
   })
 
   const raw = message.content[0].type === 'text' ? message.content[0].text.trim() : '{}'
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
   try {
-    const result = JSON.parse(raw)
+    const result = JSON.parse(cleaned)
     return NextResponse.json({
       parcelCount: result.parcelCount ?? null,
       lotNumbers: result.lotNumbers ?? [],
       address: result.address ?? '',
     })
   } catch {
-    return NextResponse.json({ error: '解析に失敗しました' }, { status: 422 })
+    return NextResponse.json({ error: `AIの返答を解析できませんでした。手動で入力してください。（raw: ${cleaned.slice(0, 100)}）` }, { status: 422 })
   }
 }

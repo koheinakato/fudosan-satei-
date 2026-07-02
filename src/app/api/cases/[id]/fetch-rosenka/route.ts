@@ -128,8 +128,9 @@ export async function POST(req: Request) {
   })
 
   const raw = message.content[0].type === 'text' ? message.content[0].text.trim() : '{}'
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
   try {
-    const result = JSON.parse(raw)
+    const result = JSON.parse(cleaned)
     return NextResponse.json({
       rosenka: result.rosenka,
       confidence: result.confidence,

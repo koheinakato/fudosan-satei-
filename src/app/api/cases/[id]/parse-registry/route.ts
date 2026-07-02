@@ -38,9 +38,10 @@ ${text.slice(0, 3000)}
     messages: [{ role: 'user', content: prompt }],
   })
 
-  const raw = message.content[0].type === 'text' ? message.content[0].text : '{}'
+  const raw = message.content[0].type === 'text' ? message.content[0].text.trim() : '{}'
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim()
   try {
-    const parsed = JSON.parse(raw)
+    const parsed = JSON.parse(cleaned)
     return NextResponse.json(parsed)
   } catch {
     return NextResponse.json({ error: '解析に失敗しました' }, { status: 422 })
