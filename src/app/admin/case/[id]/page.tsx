@@ -50,12 +50,35 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
       GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@6.0.227/build/pdf.worker.min.mjs`
       const arrayBuffer = await file.arrayBuffer()
       const pdf = await getDocument({ data: arrayBuffer }).promise
+
       let fullText = ''
+      const pageImages: string[] = []
+
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i)
+        // テキスト抽出
         const content = await page.getTextContent()
         fullText += content.items.map((item) => ('str' in item ? item.str : '')).join(' ') + '\n'
+        // ページ画像レンダリング（レポートページへ引き継ぎ用）
+        const viewport = page.getViewport({ scale: 1.5 })
+        const canvas = document.createElement('canvas')
+        canvas.width = viewport.width
+        canvas.height = viewport.height
+        const ctx = canvas.getContext('2d')!
+        await page.render({ canvasContext: ctx, viewport, canvas } as Parameters<typeof page.render>[0]).promise
+        pageImages.push(canvas.toDataURL('image/jpeg', 0.75))
       }
+
+      // localStorage に保存（レポートページで引き継ぐ）
+      try {
+        const stored = JSON.parse(localStorage.getItem(`registry_${id}`) || '{"texts":{},"images":[]}')
+        stored.texts[type] = fullText
+        stored.images = type === 'land'
+          ? [...pageImages, ...(stored.images || []).filter((_: string, i: number) => i >= (stored.landPageCount || 0))]
+          : [...(stored.images || []).slice(0, stored.landPageCount || 0), ...pageImages]
+        stored.landPageCount = type === 'land' ? pageImages.length : (stored.landPageCount || 0)
+        localStorage.setItem(`registry_${id}`, JSON.stringify(stored))
+      } catch { /* localStorage 容量超過時は無視 */ }
 
       const res = await fetch(`/api/cases/${id}/parse-parcels`, {
         method: 'POST',
@@ -69,7 +92,7 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
           setParsedLots(d.lotNumbers || [])
           setMessage(`土地登記 解析完了: ${d.parcelCount}筆 / ${d.address || ''}`)
         } else {
-          setMessage(`建物登記 解析完了: ${d.address || ''}（筆数は土地登記から取得済み）`)
+          setMessage(`建物登記 解析完了（レポートページへ引き継ぎ済み）`)
         }
       } else {
         setMessage(`解析失敗: ${d.error}`)

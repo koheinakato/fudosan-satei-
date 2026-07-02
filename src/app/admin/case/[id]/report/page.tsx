@@ -97,6 +97,52 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
       })
   }, [id])
 
+  // 案件詳細ページでアップロードした登記データを引き継ぐ
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(`registry_${id}`)
+      if (!stored) return
+      const data = JSON.parse(stored)
+
+      // 登記資料画像を自動セット
+      if (data.images?.length > 0) {
+        setRegistryImages(data.images)
+        setMessage('案件詳細の登記PDFデータを引き継ぎました')
+      }
+
+      // テキストから物件情報を自動入力
+      const combinedText = Object.values(data.texts || {}).join('\n')
+      if (combinedText.trim().length > 10) {
+        fetch(`/api/cases/${id}/parse-registry`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: combinedText }),
+        })
+          .then(r => r.json())
+          .then(parsed => {
+            if (!parsed.error) {
+              if (parsed.address) setInfo(prev => ({
+                ...prev,
+                address: parsed.address || prev.address,
+                jyukyoHyoji: parsed.jyukyoHyoji || prev.jyukyoHyoji,
+                chiban: parsed.chiban || prev.chiban,
+                kaheiNumber: parsed.kaheiNumber || prev.kaheiNumber,
+                propertyName: parsed.propertyName || prev.propertyName,
+              }))
+              if (parsed.landArea) setLand(prev => ({ ...prev, totalArea: parsed.landArea }))
+              if (parsed.floorArea) setBuilding(prev => ({
+                ...prev,
+                floorArea: parsed.floorArea,
+                structure: parsed.structure || prev.structure,
+                age: parsed.builtYear ? new Date().getFullYear() - parsed.builtYear : prev.age,
+              }))
+            }
+          })
+          .catch(() => {})
+      }
+    } catch { /* localStorage 読み込み失敗時は無視 */ }
+  }, [id])
+
   // Calculations
   const validLandArea = Math.max(0, land.totalArea - land.setback)
 
