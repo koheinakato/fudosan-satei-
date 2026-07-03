@@ -22,14 +22,15 @@ function buildVariants(address: string): string[] {
   return result
 }
 
-// 国土地理院（日本国内IPから有効）
+// 国土地理院
 async function geocodeGSI(q: string): Promise<{ lat: number; lng: number } | null> {
   try {
     const res = await fetch(
       `https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(q)}`,
       { cache: 'no-store' }
     )
-    const data = await res.json()
+    const text = await res.text()
+    const data = JSON.parse(text)
     if (Array.isArray(data) && data.length > 0) {
       return { lat: data[0].geometry.coordinates[1], lng: data[0].geometry.coordinates[0] }
     }
@@ -37,15 +38,15 @@ async function geocodeGSI(q: string): Promise<{ lat: number; lng: number } | nul
   return null
 }
 
-// OpenStreetMap Nominatim（グローバルアクセス可・無料）
+// OpenStreetMap Nominatim
 async function geocodeNominatim(q: string): Promise<{ lat: number; lng: number } | null> {
   try {
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&countrycodes=jp&limit=1`
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'FudosanSateiApp/1.0' },
-      cache: 'no-store',
-    })
-    const data = await res.json()
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&countrycodes=jp&limit=1`,
+      { headers: { 'User-Agent': 'FudosanSateiApp/1.0' }, cache: 'no-store' }
+    )
+    const text = await res.text()
+    const data = JSON.parse(text)
     if (Array.isArray(data) && data.length > 0) {
       return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }
     }
@@ -68,7 +69,10 @@ export async function POST(req: Request) {
   }
 
   if (!coords) {
-    return NextResponse.json({ error: '住所から座標を取得できませんでした' }, { status: 422 })
+    return NextResponse.json({
+      error: '住所から座標を取得できませんでした',
+      debug: { address, variants: buildVariants(address) }
+    }, { status: 422 })
   }
 
   const { lat, lng } = coords
@@ -88,7 +92,7 @@ export async function POST(req: Request) {
     `&key=${apiKey}`
 
   try {
-    const imgRes = await fetch(mapUrl, { signal: AbortSignal.timeout(10000) })
+    const imgRes = await fetch(mapUrl, { cache: 'no-store' })
     const contentType = imgRes.headers.get('content-type') || ''
 
     if (imgRes.ok && contentType.includes('image')) {
