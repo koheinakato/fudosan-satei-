@@ -22,16 +22,32 @@ function buildVariants(address: string): string[] {
   return result
 }
 
-// 国土地理院でジオコーディング（API key 不要・無料）
+// 国土地理院（日本国内IPから有効）
 async function geocodeGSI(q: string): Promise<{ lat: number; lng: number } | null> {
   try {
     const res = await fetch(
       `https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(q)}`,
-      { signal: AbortSignal.timeout(6000) }
+      { cache: 'no-store' }
     )
     const data = await res.json()
     if (Array.isArray(data) && data.length > 0) {
       return { lat: data[0].geometry.coordinates[1], lng: data[0].geometry.coordinates[0] }
+    }
+  } catch { /* ignore */ }
+  return null
+}
+
+// OpenStreetMap Nominatim（グローバルアクセス可・無料）
+async function geocodeNominatim(q: string): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&countrycodes=jp&limit=1`
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'FudosanSateiApp/1.0' },
+      cache: 'no-store',
+    })
+    const data = await res.json()
+    if (Array.isArray(data) && data.length > 0) {
+      return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) }
     }
   } catch { /* ignore */ }
   return null
@@ -44,10 +60,10 @@ export async function POST(req: Request) {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY
   if (!apiKey) return NextResponse.json({ error: 'GOOGLE_MAPS_API_KEY が設定されていません' }, { status: 500 })
 
-  // 住所バリアントを順に試してジオコーディング
+  // 住所バリアントを順に試してジオコーディング（GSI → Nominatim の順）
   let coords: { lat: number; lng: number } | null = null
   for (const variant of buildVariants(address)) {
-    coords = await geocodeGSI(variant)
+    coords = await geocodeGSI(variant) ?? await geocodeNominatim(variant)
     if (coords) break
   }
 
