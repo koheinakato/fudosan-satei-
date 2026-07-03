@@ -1,12 +1,10 @@
 import { NextResponse } from 'next/server'
 
-// 住所を段階的に簡略化したバリアント一覧（詳細→都道府県）
-function buildVariants(address: string): string[] {
-  // 文字間スペース除去・全角数字→半角・番地正規化
-  address = address.replace(/\s+/g, '').trim()
-  address = address.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
-  address = address.replace(/番地/g, '番')
+function isJapanese(s: string): boolean {
+  return /[　-鿿豈-﫿＀-￯]/.test(s)
+}
 
+function buildVariants(address: string): string[] {
   const seen = new Set<string>()
   const result: string[] = []
   const push = (s: string) => {
@@ -14,20 +12,32 @@ function buildVariants(address: string): string[] {
     if (s.length > 3 && !seen.has(s)) { seen.add(s); result.push(s) }
   }
 
-  push(address)
-  push(address.replace(/-?\d+号?$/, ''))                              // 号除去
-  push(address.replace(/-\d+-\d+$/, '').replace(/-\d+$/, ''))        // 番地-号除去
-  push(address.replace(/(丁目).*$/, '$1'))                            // 丁目まで
-  push(address.replace(/\d.*$/, ''))                                  // 町名まで
-  const city = address.match(/^.+?[都道府県].+?[市区町村]/)?.[0]
-  if (city) push(city)                                                // 市区町村まで
-  const pref = address.match(/^.+?[都道府県]/)?.[0]
-  if (pref) push(pref)                                                // 都道府県まで
+  if (isJapanese(address)) {
+    // 日本語住所: 文字間スペース除去・全角数字→半角・番地正規化
+    address = address.replace(/\s+/g, '').trim()
+    address = address.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    address = address.replace(/番地/g, '番')
+
+    push(address)
+    push(address.replace(/-?\d+号?$/, ''))
+    push(address.replace(/-\d+-\d+$/, '').replace(/-\d+$/, ''))
+    push(address.replace(/(丁目).*$/, '$1'))
+    push(address.replace(/\d.*$/, ''))
+    const city = address.match(/^.+?[都道府県].+?[市区町村]/)?.[0]
+    if (city) push(city)
+    const pref = address.match(/^.+?[都道府県]/)?.[0]
+    if (pref) push(pref)
+  } else {
+    // 海外住所: スペースはそのまま保持
+    push(address)
+    push(address.replace(/\s+NO\.\s*\d+.*/i, ''))
+    push(address.replace(/[,，].*$/, '').trim())
+    push(address.split(/[,，]+/)[0].trim())
+  }
 
   return result
 }
 
-// 国土地理院
 async function geocodeGSI(q: string): Promise<{ lat: number; lng: number } | null> {
   try {
     const res = await fetch(
@@ -43,11 +53,11 @@ async function geocodeGSI(q: string): Promise<{ lat: number; lng: number } | nul
   return null
 }
 
-// OpenStreetMap Nominatim
-async function geocodeNominatim(q: string): Promise<{ lat: number; lng: number } | null> {
+async function geocodeNominatim(q: string, jp: boolean): Promise<{ lat: number; lng: number } | null> {
   try {
+    const cc = jp ? '&countrycodes=jp' : ''
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&countrycodes=jp&limit=1`,
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json${cc}&limit=1`,
       { headers: { 'User-Agent': 'FudosanSateiApp/1.0' }, cache: 'no-store' }
     )
     const text = await res.text()
@@ -66,10 +76,12 @@ export async function POST(req: Request) {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY
   if (!apiKey) return NextResponse.json({ error: 'GOOGLE_MAPS_API_KEY が設定されていません' }, { status: 500 })
 
-  // 住所バリアントを順に試してジオコーディング（GSI → Nominatim の順）
+  const jp = isJapanese(address)
   let coords: { lat: number; lng: number } | null = null
   for (const variant of buildVariants(address)) {
-    coords = await geocodeGSI(variant) ?? await geocodeNominatim(variant)
+    coords = jp
+      ? (await geocodeGSI(variant) ?? await geocodeNominatim(variant, true))
+      : await geocodeNominatim(variant, false)
     if (coords) break
   }
 
@@ -84,7 +96,6 @@ export async function POST(req: Request) {
   const zoom = type === 'zone' ? 15 : 17
   const markerColor = type === 'zone' ? 'blue' : 'red'
 
-  // 座標で Static Maps API を呼ぶ（Geocoding API 不要）
   const mapUrl =
     `https://maps.googleapis.com/maps/api/staticmap` +
     `?center=${lat},${lng}` +

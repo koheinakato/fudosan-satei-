@@ -3,8 +3,10 @@ import { NextResponse } from 'next/server'
 export async function POST(req: Request) {
   let { address } = await req.json()
   if (!address) return NextResponse.json({ error: '住所が必要です' }, { status: 400 })
-  address = address.replace(/\s+/g, '').trim()
-    .replace(/[０-９]/g, (c: string) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+  if (/[　-鿿豈-﫿＀-￯]/.test(address)) {
+    address = address.replace(/\s+/g, '').trim()
+      .replace(/[０-９]/g, (c: string) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+  }
 
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json({ error: 'ANTHROPIC_API_KEY が設定されていません' }, { status: 500 })
