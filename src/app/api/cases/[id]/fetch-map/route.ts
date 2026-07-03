@@ -30,6 +30,14 @@ function addressVariants(address: string): string[] {
   const v4 = push(address.replace(/\d.*$/, ''))
   if (v4 && v4 !== address) variants.push(v4)
 
+  // 市区町村レベル: "広島県呉市西中央3-19-6" → "広島県呉市"
+  const cityMatch = address.match(/^.+?[都道府県].+?[市区町村]/)
+  if (cityMatch) { const v5 = push(cityMatch[0]); if (v5) variants.push(v5) }
+
+  // 都道府県レベル: "広島県呉市西中央3-19-6" → "広島県"
+  const prefMatch = address.match(/^.+?[都道府県]/)
+  if (prefMatch) { const v6 = push(prefMatch[0]); if (v6) variants.push(v6) }
+
   return variants
 }
 
