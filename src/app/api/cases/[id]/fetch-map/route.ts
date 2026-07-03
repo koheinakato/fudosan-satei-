@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server'
 
 // 住所を段階的に簡略化したバリアント一覧（詳細→都道府県）
 function buildVariants(address: string): string[] {
+  // 文字間スペース除去・全角数字→半角・番地正規化
+  address = address.replace(/\s+/g, '').trim()
+  address = address.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+  address = address.replace(/番地/g, '番')
+
   const seen = new Set<string>()
   const result: string[] = []
   const push = (s: string) => {
