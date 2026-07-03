@@ -34,32 +34,38 @@ function addressVariants(address: string): string[] {
 }
 
 async function geocode(variant: string, apiKey: string): Promise<{ lat: number; lng: number } | null> {
-  // 国土地理院
-  try {
-    const res = await fetch(
-      `https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(variant)}`,
-      { signal: AbortSignal.timeout(4000) }
-    )
-    const data = await res.json()
-    if (data?.length > 0) {
-      return { lat: data[0].geometry.coordinates[1], lng: data[0].geometry.coordinates[0] }
-    }
-  } catch { /* continue */ }
-
-  // Google Maps Geocoding
-  try {
-    const res = await fetch(
-      `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(variant)}&language=ja&region=JP&key=${apiKey}`,
-      { signal: AbortSignal.timeout(4000) }
-    )
-    const data = await res.json()
-    if (data.results?.length > 0) {
-      return {
-        lat: data.results[0].geometry.location.lat,
-        lng: data.results[0].geometry.location.lng,
+  // 国土地理院（失敗時1回リトライ）
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(
+        `https://msearch.gsi.go.jp/address-search/AddressSearch?q=${encodeURIComponent(variant)}`,
+        { signal: AbortSignal.timeout(6000) }
+      )
+      const data = await res.json()
+      if (data?.length > 0) {
+        return { lat: data[0].geometry.coordinates[1], lng: data[0].geometry.coordinates[0] }
       }
-    }
-  } catch { /* continue */ }
+      break
+    } catch { if (attempt === 0) await new Promise(r => setTimeout(r, 500)) }
+  }
+
+  // Google Maps Geocoding（失敗時1回リトライ）
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(variant)}&language=ja&region=JP&key=${apiKey}`,
+        { signal: AbortSignal.timeout(6000) }
+      )
+      const data = await res.json()
+      if (data.results?.length > 0) {
+        return {
+          lat: data.results[0].geometry.location.lat,
+          lng: data.results[0].geometry.location.lng,
+        }
+      }
+      break
+    } catch { if (attempt === 0) await new Promise(r => setTimeout(r, 500)) }
+  }
 
   return null
 }
