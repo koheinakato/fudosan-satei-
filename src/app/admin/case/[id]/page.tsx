@@ -59,26 +59,34 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
         // テキスト抽出
         const content = await page.getTextContent()
         fullText += content.items.map((item) => ('str' in item ? item.str : '')).join(' ') + '\n'
-        // ページ画像レンダリング（レポートページへ引き継ぎ用）
-        const viewport = page.getViewport({ scale: 1.5 })
+        // ページ画像レンダリング（容量削減のため scale:1.0 / JPEG 0.6）
+        const viewport = page.getViewport({ scale: 1.0 })
         const canvas = document.createElement('canvas')
         canvas.width = viewport.width
         canvas.height = viewport.height
         const ctx = canvas.getContext('2d')!
         await page.render({ canvasContext: ctx, viewport, canvas } as Parameters<typeof page.render>[0]).promise
-        pageImages.push(canvas.toDataURL('image/jpeg', 0.75))
+        pageImages.push(canvas.toDataURL('image/jpeg', 0.6))
       }
 
       // localStorage に保存（レポートページで引き継ぐ）
       try {
-        const stored = JSON.parse(localStorage.getItem(`registry_${id}`) || '{"texts":{},"images":[]}')
-        stored.texts[type] = fullText
-        stored.images = type === 'land'
-          ? [...pageImages, ...(stored.images || []).filter((_: string, i: number) => i >= (stored.landPageCount || 0))]
-          : [...(stored.images || []).slice(0, stored.landPageCount || 0), ...pageImages]
-        stored.landPageCount = type === 'land' ? pageImages.length : (stored.landPageCount || 0)
-        localStorage.setItem(`registry_${id}`, JSON.stringify(stored))
-      } catch { /* localStorage 容量超過時は無視 */ }
+        const existing = JSON.parse(localStorage.getItem(`registry_${id}`) || '{"texts":{},"images":[]}')
+        existing.texts = existing.texts || {}
+        existing.texts[type] = fullText
+        // 土地: 先頭に追加、建物: 末尾に追加（シンプルな結合）
+        if (type === 'land') {
+          existing.images = [...pageImages, ...(existing.buildingImages || [])]
+          existing.landImages = pageImages
+        } else {
+          existing.images = [...(existing.landImages || []), ...pageImages]
+          existing.buildingImages = pageImages
+        }
+        localStorage.setItem(`registry_${id}`, JSON.stringify(existing))
+        setMessage(prev => prev + '（レポートページへ引き継ぎ済み）')
+      } catch (e) {
+        setMessage(prev => prev + `（引き継ぎ失敗: ${e instanceof Error ? e.message : 'ストレージ容量不足'}）`)
+      }
 
       const res = await fetch(`/api/cases/${id}/parse-parcels`, {
         method: 'POST',
