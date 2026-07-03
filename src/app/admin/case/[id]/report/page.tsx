@@ -133,7 +133,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
           if (rData.rosenka) { rosenkaVal = rData.rosenka; setLand(prev => ({ ...prev, rosenka: rData.rosenka })) }
         } catch { /* ignore */ }
 
-        // 地図・取引事例を並列取得
+        // 地図・取引事例・土地情報を並列取得
         await Promise.all([
           fetch(`/api/cases/${id}/fetch-map`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -154,6 +154,24 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ address, propertyType: c.property_type, rosenka: rosenkaVal }),
           }).then(r => r.json()).then(d => { if (d.cases) setCases(d.cases) }).catch(() => {}),
+
+          fetch(`/api/cases/${id}/fetch-land-info`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address }),
+          }).then(r => r.json()).then(d => {
+            if (!d.error) {
+              setLand(prev => ({
+                ...prev,
+                useDistrict: d.useDistrict || prev.useDistrict,
+                buildingCoverage: d.buildingCoverage || prev.buildingCoverage,
+                floorCoverage: d.floorCoverage || prev.floorCoverage,
+                railway: d.railway || prev.railway,
+                station: d.station || prev.station,
+                walkTime: d.walkTime || prev.walkTime,
+                shape: d.shape || prev.shape,
+              }))
+            }
+          }).catch(() => {}),
         ])
 
         setAutoFetching(false)
