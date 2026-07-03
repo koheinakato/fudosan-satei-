@@ -140,7 +140,8 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
             body: JSON.stringify({ address, type: 'rosenka' }),
           }).then(r => r.json()).then(d => {
             if (d.image) setRosenkaMap(d.image)
-          }).catch(() => {}),
+            else if (d.error) setMessage(`地図デバッグ: ${d.error}`)
+          }).catch(e => setMessage(`地図通信エラー: ${e}`)),
 
           fetch(`/api/cases/${id}/fetch-map`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
