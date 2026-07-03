@@ -173,6 +173,22 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
               }))
             }
           }).catch(() => {}),
+
+          fetch(`/api/cases/${id}/fetch-building-info`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address, propertyType: c.property_type }),
+          }).then(r => r.json()).then(d => {
+            if (!d.error) {
+              setBuilding(prev => ({
+                ...prev,
+                structure: prev.structure || d.structure || '',
+                floorArea: prev.floorArea || d.floorArea || 0,
+                age: prev.age || d.age || 0,
+                usefulLife: d.usefulLife || prev.usefulLife,
+                newPrice: d.newPrice || prev.newPrice,
+              }))
+            }
+          }).catch(() => {}),
         ])
 
         setAutoFetching(false)
