@@ -37,6 +37,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
   const [autoFetching, setAutoFetching] = useState(false)
   const [message, setMessage] = useState('')
   const autoFetchDone = useRef(false)
+  const opinionGenDone = useRef(false)
 
   // Property info
   const [info, setInfo] = useState({
@@ -159,6 +160,15 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
         setMessage('AI自動入力が完了しました（内容を確認・修正してください）')
       })
   }, [id])
+
+  // 所見を自動生成（auto-fetch完了後）
+  useEffect(() => {
+    if (!autoFetching && autoFetchDone.current && !opinionGenDone.current && caseData) {
+      opinionGenDone.current = true
+      generateOpinion()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFetching, caseData])
 
   // Calculations
   const validLandArea = Math.max(0, land.totalArea - land.setback)

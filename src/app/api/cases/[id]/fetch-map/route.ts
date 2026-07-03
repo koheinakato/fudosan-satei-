@@ -19,8 +19,20 @@ export async function POST(req: Request) {
       lng = geoData[0].geometry.coordinates[0]
       lat = geoData[0].geometry.coordinates[1]
     }
-  } catch {
-    return NextResponse.json({ error: 'ジオコーディングに失敗しました' }, { status: 500 })
+  } catch { /* fall through to Google Maps fallback */ }
+
+  // Fallback to Google Maps Geocoding API
+  if (!lat || !lng) {
+    try {
+      const gmGeoRes = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&language=ja&region=JP&key=${apiKey}`
+      )
+      const gmGeoData = await gmGeoRes.json()
+      if (gmGeoData.results?.length > 0) {
+        lat = gmGeoData.results[0].geometry.location.lat
+        lng = gmGeoData.results[0].geometry.location.lng
+      }
+    } catch { /* ignore */ }
   }
 
   if (!lat || !lng) {

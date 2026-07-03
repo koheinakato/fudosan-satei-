@@ -27,6 +27,8 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
   const [loading, setLoading] = useState(false)
   const [parsing, setParsing] = useState<'land' | 'building' | null>(null)
   const [message, setMessage] = useState('')
+  const [landFileName, setLandFileName] = useState('')
+  const [buildingFileName, setBuildingFileName] = useState('')
   const landPdfInputRef = useRef<HTMLInputElement>(null)
   const buildingPdfInputRef = useRef<HTMLInputElement>(null)
 
@@ -43,6 +45,8 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
   }, [id])
 
   const parsePdf = async (file: File, type: 'land' | 'building') => {
+    if (type === 'land') setLandFileName(file.name)
+    else setBuildingFileName(file.name)
     setParsing(type)
     setMessage(`${type === 'land' ? '土地' : '建物'}登記PDFを解析中...`)
     try {
@@ -234,10 +238,25 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
                         type="file"
                         accept="application/pdf"
                         onChange={e => { const f = e.target.files?.[0]; if (f) parsePdf(f, 'land') }}
-                        disabled={parsing !== null}
-                        className="text-xs text-stone-500 file:mr-2 file:py-1.5 file:px-3 file:border file:border-stone-300 file:bg-white file:text-stone-700 file:text-xs file:cursor-pointer hover:file:bg-stone-50"
+                        aria-hidden="true"
+                        tabIndex={-1}
+                        style={{ position: 'absolute', width: '1px', height: '1px', opacity: 0, overflow: 'hidden', pointerEvents: 'none' }}
                       />
-                      {parsing === 'land' && <span className="text-xs text-amber-600 animate-pulse">解析中...</span>}
+                      <button
+                        type="button"
+                        onClick={() => { if (parsing === null) landPdfInputRef.current?.click() }}
+                        disabled={parsing !== null}
+                        className="text-xs py-1.5 px-3 border border-stone-300 bg-white text-stone-700 rounded hover:bg-stone-50 disabled:opacity-50"
+                      >
+                        {parsing === 'land' ? '解析中...' : landFileName ? '再選択' : 'ファイルを選択'}
+                      </button>
+                      {parsing === 'land' ? (
+                        <span className="text-xs text-amber-600 animate-pulse">解析中...</span>
+                      ) : landFileName ? (
+                        <span className="text-xs text-stone-600 truncate max-w-[220px]" title={landFileName}>{landFileName}</span>
+                      ) : (
+                        <span className="text-xs text-stone-400">未選択</span>
+                      )}
                     </div>
                   </div>
 
@@ -249,10 +268,25 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
                         type="file"
                         accept="application/pdf"
                         onChange={e => { const f = e.target.files?.[0]; if (f) parsePdf(f, 'building') }}
-                        disabled={parsing !== null}
-                        className="text-xs text-stone-500 file:mr-2 file:py-1.5 file:px-3 file:border file:border-stone-300 file:bg-white file:text-stone-700 file:text-xs file:cursor-pointer hover:file:bg-stone-50"
+                        aria-hidden="true"
+                        tabIndex={-1}
+                        style={{ position: 'absolute', width: '1px', height: '1px', opacity: 0, overflow: 'hidden', pointerEvents: 'none' }}
                       />
-                      {parsing === 'building' && <span className="text-xs text-amber-600 animate-pulse">解析中...</span>}
+                      <button
+                        type="button"
+                        onClick={() => { if (parsing === null) buildingPdfInputRef.current?.click() }}
+                        disabled={parsing !== null}
+                        className="text-xs py-1.5 px-3 border border-stone-300 bg-white text-stone-700 rounded hover:bg-stone-50 disabled:opacity-50"
+                      >
+                        {parsing === 'building' ? '解析中...' : buildingFileName ? '再選択' : 'ファイルを選択'}
+                      </button>
+                      {parsing === 'building' ? (
+                        <span className="text-xs text-amber-600 animate-pulse">解析中...</span>
+                      ) : buildingFileName ? (
+                        <span className="text-xs text-stone-600 truncate max-w-[220px]" title={buildingFileName}>{buildingFileName}</span>
+                      ) : (
+                        <span className="text-xs text-stone-400">未選択</span>
+                      )}
                     </div>
                   </div>
                 </div>
