@@ -35,7 +35,7 @@ export default function ApplyPage() {
       return
     }
 
-    router.push(`/apply/payment?case_id=${data.case.id}`)
+    router.push(`/apply/terms?case_id=${data.case.id}`)
   }
 
   return (
@@ -45,7 +45,7 @@ export default function ApplyPage() {
         {/* ステップ表示 */}
         <div className="mb-12">
           <p className="font-helvetica text-[11px] tracking-[0.1em] text-[#5a5a5a] uppercase mb-4">
-            Step 1 / 2
+            Step 1 / 3
           </p>
           <h1 className="text-2xl font-medium text-[#212529] mb-2">
             査定依頼フォーム
