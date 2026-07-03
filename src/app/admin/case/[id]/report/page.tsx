@@ -187,6 +187,12 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                 usefulLife: d.usefulLife || prev.usefulLife,
                 newPrice: d.newPrice || prev.newPrice,
               }))
+              setIncome(prev => ({
+                monthlyRent: prev.monthlyRent || d.monthlyRent || 0,
+                vacancyRate: d.vacancyRate || prev.vacancyRate,
+                expenseRate: d.expenseRate || prev.expenseRate,
+                capRate: d.capRate || prev.capRate,
+              }))
             }
           }).catch(() => {}),
         ])
