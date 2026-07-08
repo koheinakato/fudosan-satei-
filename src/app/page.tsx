@@ -33,38 +33,25 @@ export default function Home() {
             </p>
           </div>
 
-          {/* Right: イラスト */}
-          <div className="hidden md:flex flex-1 items-center justify-center self-stretch px-12">
-            <svg viewBox="0 0 320 280" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full max-w-xs">
-              {[0,1,2,3,4].map(i => (
-                <line key={`h${i}`} x1="20" y1={60 + i * 44} x2="300" y2={60 + i * 44} stroke="#ced4da" strokeWidth="0.5"/>
-              ))}
-              {[0,1,2,3,4,5,6].map(i => (
-                <line key={`v${i}`} x1={20 + i * 46} y1="60" x2={20 + i * 46} y2="236" stroke="#ced4da" strokeWidth="0.5"/>
-              ))}
+          {/* Right: 活用事例 */}
+          <div className="hidden md:flex flex-1 items-end justify-center self-stretch px-12 pb-20">
+            <div className="w-full max-w-xs space-y-3">
+              <p className="font-helvetica text-[10px] tracking-[0.12em] text-[#9a9a9a] uppercase mb-5">こんな時に活用できます</p>
               {[
-                { x: 42, h: 80, color: '#ced4da' },
-                { x: 88, h: 110, color: '#ced4da' },
-                { x: 134, h: 95, color: '#ced4da' },
-                { x: 180, h: 130, color: '#ced4da' },
-                { x: 226, h: 120, color: '#ced4da' },
-                { x: 272, h: 160, color: '#212529' },
-              ].map((bar, i) => (
-                <rect key={i} x={bar.x - 14} y={236 - bar.h} width="28" height={bar.h} fill={bar.color}/>
+                { tag: '売 却', title: '売却前の価格確認', desc: '住み替えや資産整理の前に、適正な売り出し価格を把握できます。' },
+                { tag: '相 続', title: '遺産分割・税務申告', desc: '相続税申告や遺産分割協議に必要な不動産評価額を取得できます。' },
+                { tag: '購 入', title: '購入価格の妥当性確認', desc: '検討中の物件が相場に見合った価格かどうかを第三者目線で確認。' },
+                { tag: '賃 貸', title: '賃料・資産価値の把握', desc: '賃貸に出す前に物件の資産価値と適正賃料の目安を確認できます。' },
+              ].map((item) => (
+                <div key={item.tag} className="flex gap-4 border-b border-[#ced4da] pb-3">
+                  <span className="font-helvetica text-[9px] tracking-[0.08em] text-[#9a9a9a] shrink-0 w-10 mt-0.5">{item.tag}</span>
+                  <div>
+                    <p className="text-xs font-medium text-[#212529] mb-0.5">{item.title}</p>
+                    <p className="text-[11px] text-[#5a5a5a] leading-relaxed">{item.desc}</p>
+                  </div>
+                </div>
               ))}
-              <polyline points="42,200 88,175 134,185 180,155 226,162 272,115" stroke="#5a5a5a" strokeWidth="1.5" strokeDasharray="4 3" fill="none"/>
-              {[[42,200],[88,175],[134,185],[180,155],[226,162],[272,115]].map(([cx,cy],i) => (
-                <circle key={i} cx={cx} cy={cy} r={i === 5 ? 5 : 3} fill={i === 5 ? '#212529' : '#5a5a5a'}/>
-              ))}
-              <text x="272" y="105" textAnchor="middle" fontSize="9" fill="#212529" fontFamily="Helvetica Neue, sans-serif" letterSpacing="0.5">YOUR</text>
-              <text x="272" y="115" textAnchor="middle" fontSize="7" fill="#5a5a5a" fontFamily="Helvetica Neue, sans-serif">PROPERTY</text>
-              <text x="14" y="63" textAnchor="end" fontSize="7" fill="#5a5a5a" fontFamily="Helvetica Neue, sans-serif">高</text>
-              <text x="14" y="239" textAnchor="end" fontSize="7" fill="#5a5a5a" fontFamily="Helvetica Neue, sans-serif">低</text>
-              <text x="160" y="30" textAnchor="middle" fontSize="9" fill="#5a5a5a" fontFamily="Helvetica Neue, sans-serif" letterSpacing="2">PROPERTY VALUATION</text>
-              <line x1="60" y1="38" x2="260" y2="38" stroke="#ced4da" strokeWidth="0.5"/>
-              <rect x="195" y="44" width="105" height="14" fill="#212529"/>
-              <text x="247" y="54" textAnchor="middle" fontSize="7.5" fill="white" fontFamily="Helvetica Neue, sans-serif" letterSpacing="1">AI ANALYSIS</text>
-            </svg>
+            </div>
           </div>
 
         </div>
@@ -153,7 +140,7 @@ export default function Home() {
                 { step: '02', title: 'カード情報を登録', desc: '査定完了後にご請求します。この時点での引き落としは0円です。' },
                 { step: '03', title: '弊社が登記情報を確認・料金をご案内', desc: '登記情報から筆数を確認し、確定した料金をメールでご連絡します。ご了承後に決済します。' },
                 { step: '04', title: 'AIが自動分析', desc: '公的データ・路線価・取引事例をもとに査定額を算出します。' },
-                { step: '05', title: 'プロが確認してレポート納品', desc: '査定レポートをメールでお届けします。' },
+                { step: '05', title: 'プロが確認してレポート納品', desc: '長年不動産業界に携わってきた担当者が査定内容を精査のうえ、レポートをメールでお届けします。' },
               ].map((item) => (
                 <div key={item.step} className="flex gap-5">
                   <span className="font-helvetica text-[11px] tracking-[0.05em] text-[#5a5a5a] shrink-0 w-5 mt-0.5">{item.step}</span>

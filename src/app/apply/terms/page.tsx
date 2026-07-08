@@ -7,17 +7,27 @@ function TermsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const caseId = searchParams.get('case_id')
-  const [agreed, setAgreed] = useState(false)
+  const [agreedTerms, setAgreedTerms] = useState(false)
+  const [agreedPayment, setAgreedPayment] = useState(false)
+  const [loading, setLoading] = useState(false)
 
   if (!caseId) {
     return <p className="text-center text-sm text-[#5a5a5a]">案件IDが見つかりません</p>
+  }
+
+  const canProceed = agreedTerms && agreedPayment
+
+  const handleProceed = async () => {
+    if (!canProceed) return
+    setLoading(true)
+    await fetch(`/api/cases/${caseId}/record-consent`, { method: 'POST' }).catch(() => {})
+    router.push(`/apply/payment?case_id=${caseId}`)
   }
 
   return (
     <main className="min-h-screen bg-white py-16 px-4">
       <div className="max-w-lg mx-auto">
 
-        {/* ステップ表示 */}
         <div className="mb-10">
           <p className="font-helvetica text-[11px] tracking-[0.1em] text-[#5a5a5a] uppercase mb-4">
             Step 2 / 3
@@ -42,6 +52,7 @@ function TermsContent() {
           <div className="space-y-1">
             <p className="font-medium text-[#212529]">第2条（料金）</p>
             <p>料金は物件の登記筆数に応じて決定されます。基本料金は2筆まで¥980、3筆目以降は1筆につき¥350が加算されます。実際の料金は当社が登記情報を確認後にご案内します。</p>
+            <p>お客様が事前に筆数を把握していない場合でも、当社が取得した登記情報に基づく確定筆数をもとに料金が決定されます。筆数が予想より多い場合であっても、確定料金に同意のうえで決済を行います。</p>
           </div>
 
           <div className="space-y-1">
@@ -78,24 +89,38 @@ function TermsContent() {
         </div>
 
         {/* 同意チェックボックス */}
-        <label className="flex items-start gap-3 cursor-pointer mb-8 group">
-          <input
-            type="checkbox"
-            checked={agreed}
-            onChange={e => setAgreed(e.target.checked)}
-            className="mt-0.5 w-4 h-4 accent-[#212529] cursor-pointer flex-shrink-0"
-          />
-          <span className="text-sm text-[#495057] leading-relaxed">
-            利用規約を読み、内容に同意します
-          </span>
-        </label>
+        <div className="space-y-4 mb-8">
+          <label className="flex items-start gap-3 cursor-pointer group">
+            <input
+              type="checkbox"
+              checked={agreedTerms}
+              onChange={e => setAgreedTerms(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-[#212529] cursor-pointer flex-shrink-0"
+            />
+            <span className="text-sm text-[#495057] leading-relaxed">
+              利用規約を読み、内容に同意します
+            </span>
+          </label>
+
+          <label className="flex items-start gap-3 cursor-pointer group border border-[#ced4da] rounded p-3 bg-[#f8f9fa]">
+            <input
+              type="checkbox"
+              checked={agreedPayment}
+              onChange={e => setAgreedPayment(e.target.checked)}
+              className="mt-0.5 w-4 h-4 accent-[#212529] cursor-pointer flex-shrink-0"
+            />
+            <span className="text-sm text-[#495057] leading-relaxed">
+              登記情報取得後に確定する筆数（登記取得数）にかかわらず、当社が案内する確定サービス料を支払うことに同意します。
+            </span>
+          </label>
+        </div>
 
         <button
-          disabled={!agreed}
-          onClick={() => router.push(`/apply/payment?case_id=${caseId}`)}
+          disabled={!canProceed || loading}
+          onClick={handleProceed}
           className="w-full bg-[#212529] text-white text-sm py-3 px-6 font-helvetica tracking-[0.05em] hover:bg-[#5a5757] disabled:bg-[#ced4da] disabled:cursor-not-allowed transition-colors"
         >
-          同意してカード登録へ進む
+          {loading ? '処理中...' : '同意してカード登録へ進む'}
         </button>
 
       </div>

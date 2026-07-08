@@ -27,7 +27,7 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
   const [loading, setLoading] = useState(false)
   const [parsing, setParsing] = useState<'land' | 'building' | null>(null)
   const [message, setMessage] = useState('')
-  const [landFileName, setLandFileName] = useState('')
+  const [landFileNames, setLandFileNames] = useState<string[]>([])
   const [buildingFileName, setBuildingFileName] = useState('')
   const landPdfInputRef = useRef<HTMLInputElement>(null)
   const buildingPdfInputRef = useRef<HTMLInputElement>(null)
@@ -44,48 +44,86 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
       })
   }, [id])
 
-  const parsePdf = async (file: File, type: 'land' | 'building') => {
-    if (type === 'land') setLandFileName(file.name)
-    else setBuildingFileName(file.name)
-    setParsing(type)
-    setMessage(`${type === 'land' ? '土地' : '建物'}登記PDFを解析中...`)
+  const parsePdfFile = async (file: File) => {
+    const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist')
+    GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
+    const arrayBuffer = await file.arrayBuffer()
+    const pdf = await getDocument({ data: arrayBuffer }).promise
+    let fullText = ''
+    const pageImages: string[] = []
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i)
+      const content = await page.getTextContent()
+      fullText += content.items.map((item) => ('str' in item ? item.str : '')).join(' ') + '\n'
+      const viewport = page.getViewport({ scale: 1.0 })
+      const canvas = document.createElement('canvas')
+      canvas.width = viewport.width
+      canvas.height = viewport.height
+      const ctx = canvas.getContext('2d')!
+      await page.render({ canvasContext: ctx, viewport, canvas } as Parameters<typeof page.render>[0]).promise
+      pageImages.push(canvas.toDataURL('image/jpeg', 0.6))
+    }
+    return { fullText, pageImages }
+  }
+
+  const parseLandPdfs = async (files: File[]) => {
+    setLandFileNames(files.map(f => f.name))
+    setParsing('land')
+    setMessage(`土地登記PDF（${files.length}件）を解析中...`)
     try {
-      const { getDocument, GlobalWorkerOptions } = await import('pdfjs-dist')
-      GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
-      const arrayBuffer = await file.arrayBuffer()
-      const pdf = await getDocument({ data: arrayBuffer }).promise
-
-      let fullText = ''
-      const pageImages: string[] = []
-
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i)
-        // テキスト抽出
-        const content = await page.getTextContent()
-        fullText += content.items.map((item) => ('str' in item ? item.str : '')).join(' ') + '\n'
-        // ページ画像レンダリング（容量削減のため scale:1.0 / JPEG 0.6）
-        const viewport = page.getViewport({ scale: 1.0 })
-        const canvas = document.createElement('canvas')
-        canvas.width = viewport.width
-        canvas.height = viewport.height
-        const ctx = canvas.getContext('2d')!
-        await page.render({ canvasContext: ctx, viewport, canvas } as Parameters<typeof page.render>[0]).promise
-        pageImages.push(canvas.toDataURL('image/jpeg', 0.6))
+      let combinedText = ''
+      let combinedImages: string[] = []
+      for (const file of files) {
+        const { fullText, pageImages } = await parsePdfFile(file)
+        combinedText += fullText
+        combinedImages = [...combinedImages, ...pageImages]
       }
+      try {
+        const existing = JSON.parse(localStorage.getItem(`registry_${id}`) || '{"texts":{},"images":[]}')
+        existing.texts = existing.texts || {}
+        existing.texts['land'] = combinedText
+        existing.images = [...combinedImages, ...(existing.buildingImages || [])]
+        existing.landImages = combinedImages
+        localStorage.setItem(`registry_${id}`, JSON.stringify(existing))
+        setMessage(prev => prev + '（レポートページへ引き継ぎ済み）')
+      } catch (e) {
+        setMessage(prev => prev + `（引き継ぎ失敗: ${e instanceof Error ? e.message : 'ストレージ容量不足'}）`)
+      }
+      const res = await fetch(`/api/cases/${id}/parse-parcels`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: combinedText }),
+      })
+      const d = await res.json()
+      if (d.parcelCount !== undefined && d.parcelCount !== null) {
+        setParcelCount(String(d.parcelCount))
+        setParsedLots(d.lotNumbers || [])
+        setMessage(`土地登記 解析完了: ${d.parcelCount}筆 / ${d.address || ''} （${files.length}件のPDF）`)
+      } else {
+        setMessage(`解析失敗: ${d.error}`)
+      }
+    } catch (err) {
+      setMessage(`PDFの読み込みに失敗しました: ${err instanceof Error ? err.message : ''}`)
+    } finally {
+      setParsing(null)
+      if (landPdfInputRef.current) landPdfInputRef.current.value = ''
+    }
+  }
+
+  const parsePdf = async (file: File, type: 'building') => {
+    setBuildingFileName(file.name)
+    setParsing(type)
+    setMessage('建物登記PDFを解析中...')
+    try {
+      const { fullText, pageImages } = await parsePdfFile(file)
 
       // localStorage に保存（レポートページで引き継ぐ）
       try {
         const existing = JSON.parse(localStorage.getItem(`registry_${id}`) || '{"texts":{},"images":[]}')
         existing.texts = existing.texts || {}
         existing.texts[type] = fullText
-        // 土地: 先頭に追加、建物: 末尾に追加（シンプルな結合）
-        if (type === 'land') {
-          existing.images = [...pageImages, ...(existing.buildingImages || [])]
-          existing.landImages = pageImages
-        } else {
-          existing.images = [...(existing.landImages || []), ...pageImages]
-          existing.buildingImages = pageImages
-        }
+        existing.images = [...(existing.landImages || []), ...pageImages]
+        existing.buildingImages = pageImages
         localStorage.setItem(`registry_${id}`, JSON.stringify(existing))
         setMessage(prev => prev + '（レポートページへ引き継ぎ済み）')
       } catch (e) {
@@ -99,13 +137,7 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
       })
       const d = await res.json()
       if (d.parcelCount !== undefined && d.parcelCount !== null) {
-        if (type === 'land') {
-          setParcelCount(String(d.parcelCount))
-          setParsedLots(d.lotNumbers || [])
-          setMessage(`土地登記 解析完了: ${d.parcelCount}筆 / ${d.address || ''}`)
-        } else {
-          setMessage(`建物登記 解析完了（レポートページへ引き継ぎ済み）`)
-        }
+        setMessage('建物登記 解析完了（レポートページへ引き継ぎ済み）')
       } else {
         setMessage(`解析失敗: ${d.error}`)
       }
@@ -113,8 +145,7 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
       setMessage(`PDFの読み込みに失敗しました: ${err instanceof Error ? err.message : ''}`)
     } finally {
       setParsing(null)
-      if (type === 'land' && landPdfInputRef.current) landPdfInputRef.current.value = ''
-      if (type === 'building' && buildingPdfInputRef.current) buildingPdfInputRef.current.value = ''
+      if (buildingPdfInputRef.current) buildingPdfInputRef.current.value = ''
     }
   }
 
@@ -231,13 +262,14 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
 
                 <div className="space-y-2">
                   <div>
-                    <p className="text-xs text-stone-500 mb-1">土地登記（筆数・地番を取得）</p>
+                    <p className="text-xs text-stone-500 mb-1">土地登記（筆数・地番を取得）<span className="text-stone-400 ml-1">※複数筆の場合は全てのPDFを同時選択</span></p>
                     <div className="flex gap-2 items-center">
                       <input
                         ref={landPdfInputRef}
                         type="file"
                         accept="application/pdf"
-                        onChange={e => { const f = e.target.files?.[0]; if (f) parsePdf(f, 'land') }}
+                        multiple
+                        onChange={e => { const files = Array.from(e.target.files || []); if (files.length) parseLandPdfs(files) }}
                         aria-hidden="true"
                         tabIndex={-1}
                         style={{ position: 'absolute', width: '1px', height: '1px', opacity: 0, overflow: 'hidden', pointerEvents: 'none' }}
@@ -248,12 +280,12 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
                         disabled={parsing !== null}
                         className="text-xs py-1.5 px-3 border border-stone-300 bg-white text-stone-700 rounded hover:bg-stone-50 disabled:opacity-50"
                       >
-                        {parsing === 'land' ? '解析中...' : landFileName ? '再選択' : 'ファイルを選択'}
+                        {parsing === 'land' ? '解析中...' : landFileNames.length ? '再選択' : 'ファイルを選択（複数可）'}
                       </button>
                       {parsing === 'land' ? (
                         <span className="text-xs text-amber-600 animate-pulse">解析中...</span>
-                      ) : landFileName ? (
-                        <span className="text-xs text-stone-600 truncate max-w-[220px]" title={landFileName}>{landFileName}</span>
+                      ) : landFileNames.length ? (
+                        <span className="text-xs text-stone-600">{landFileNames.length}件選択済み: {landFileNames.join(', ')}</span>
                       ) : (
                         <span className="text-xs text-stone-400">未選択</span>
                       )}
