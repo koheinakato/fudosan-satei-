@@ -162,7 +162,7 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
 
     setLoading(false)
     if (res.ok) {
-      setMessage('筆数を確定しました。顧客にメールを送信しました。')
+      setMessage('筆数を確定し、即時請求・通知メールを送信しました。')
       const data = await res.json()
       setCaseData(data.case)
     } else {
@@ -377,23 +377,8 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
                 disabled={loading || !parcelCount}
                 className="bg-amber-500 hover:bg-amber-600 text-stone-900 font-bold"
               >
-                筆数を確定してメール送信
+                筆数を確定して即時請求
               </Button>
-
-              {caseData.total_price && (
-                <div className="border-t pt-4">
-                  <p className="text-sm text-stone-600 mb-3">
-                    確定済み料金: <strong>¥{caseData.total_price.toLocaleString()}</strong>
-                  </p>
-                  <Button
-                    onClick={handleCharge}
-                    disabled={loading}
-                    variant="destructive"
-                  >
-                    ¥{caseData.total_price.toLocaleString()} を請求する
-                  </Button>
-                </div>
-              )}
             </CardContent>
           </Card>
         )}
