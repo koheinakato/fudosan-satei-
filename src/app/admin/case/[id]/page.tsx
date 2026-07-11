@@ -390,6 +390,9 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
             <a href="https://www.chikamap.jp/chikamap/Portal?mid=216" target="_blank" rel="noopener noreferrer" className="block text-blue-600 hover:underline">
               路線価マップ（chikamap）
             </a>
+            <a href="https://toshikeikaku-info.jp/" target="_blank" rel="noopener noreferrer" className="block text-blue-600 hover:underline">
+              用途地域図（toshikeikaku-info）
+            </a>
             <a href="https://www.reinfolib.mlit.go.jp/" target="_blank" rel="noopener noreferrer" className="block text-blue-600 hover:underline">
               不動産売買事例（国土交通省）
             </a>
