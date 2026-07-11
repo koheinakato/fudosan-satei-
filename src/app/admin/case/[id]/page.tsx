@@ -398,6 +398,19 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
           </Card>
         )}
 
+        {/* 参考リンク */}
+        <Card>
+          <CardHeader><CardTitle>参考リンク</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <a href="https://www.chikamap.jp/chikamap/Portal?mid=216" target="_blank" rel="noopener noreferrer" className="block text-blue-600 hover:underline">
+              路線価マップ（chikamap）
+            </a>
+            <a href="https://www.reinfolib.mlit.go.jp/" target="_blank" rel="noopener noreferrer" className="block text-blue-600 hover:underline">
+              不動産売買事例（国土交通省）
+            </a>
+          </CardContent>
+        </Card>
+
         {/* ステータス更新 */}
         <Card>
           <CardHeader><CardTitle>ステータス更新</CardTitle></CardHeader>
