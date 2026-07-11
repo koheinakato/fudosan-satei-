@@ -64,6 +64,11 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
     structure: '', floorArea: 0, age: 0, usefulLife: 22, newPrice: 200000,
   })
 
+  // Mansion-specific
+  const [mansion, setMansion] = useState({
+    floor: 0, totalFloors: 0, direction: '', managementFee: 0, repairFund: 0,
+  })
+
   // Cases
   const [cases, setCases] = useState<CaseItem[]>(defaultCases)
   const [individualCorr, setIndividualCorr] = useState(1.00)
@@ -116,15 +121,17 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
         const c: Case = d.case
         setCaseData(c)
         const address = c.property_address || ''
+        const isMansionProperty = c.property_type === 'mansion'
+        if (isMansionProperty) setWeights({ land: 70, building: 0, income: 30 })
         setInfo(prev => ({ ...prev, address, clientName: c.customer_name ? `${c.customer_name} 様` : '' }))
         if (!address || autoFetchDone.current) return
         autoFetchDone.current = true
         setAutoFetching(true)
         setMessage('AI情報を自動取得中...')
 
-        // 路線価取得
+        // 路線価取得（戸建て・土地のみ）
         let rosenkaVal = 0
-        try {
+        if (!isMansionProperty) try {
           const rRes = await fetch(`/api/cases/${id}/fetch-rosenka`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ address }),
@@ -225,8 +232,13 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
     return net / ((income.capRate || 1) / 100)
   })()
 
+  const isMansion = caseData?.property_type === 'mansion'
+  const caseEvalTotal = isMansion
+    ? landEval.average * individualCorr * building.floorArea
+    : landEval.total
+
   const totalEval =
-    landEval.total * (weights.land / 100) +
+    caseEvalTotal * (weights.land / 100) +
     buildingEval.total * (weights.building / 100) +
     incomeEval * (weights.income / 100)
 
@@ -372,8 +384,13 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
           floorArea: building.floorArea,
           age: building.age,
           usefulLife: building.usefulLife,
+          mansionFloor: mansion.floor,
+          mansionTotalFloors: mansion.totalFloors,
+          mansionDirection: mansion.direction,
+          mansionManagementFee: mansion.managementFee,
+          mansionRepairFund: mansion.repairFund,
           evaluationTotal: totalEval,
-          landTotal: landEval.total,
+          caseEvalTotal,
           buildingTotal: buildingEval.total,
           incomeTotal: incomeEval,
           weightLand: weights.land,
@@ -523,38 +540,74 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
             </div>
           </section>
 
-          {/* 土地 */}
+          {/* マンション概要（マンションのみ） */}
+          {isMansion && (
+            <section>
+              <h2 className="text-xs font-medium text-[#5a5a5a] mb-2 uppercase tracking-widest">マンション概要</h2>
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  ['階数', 'floor', 'number', '5'],
+                  ['総階数', 'totalFloors', 'number', '10'],
+                  ['向き', 'direction', 'text', '南向き'],
+                  ['管理費 (円/月)', 'managementFee', 'number', '15000'],
+                  ['修繕積立金 (円/月)', 'repairFund', 'number', '10000'],
+                ] as [string, keyof typeof mansion, string, string][]).map(([label, key, type, ph]) => (
+                  <div key={key} className={key === 'direction' ? 'col-span-2' : ''}>
+                    <label className="block text-[10px] text-[#9a9a9a] mb-0.5">{label}</label>
+                    <input type={type} value={(mansion as Record<string, number | string>)[key] || ''} placeholder={ph}
+                      onChange={e => setMansion(prev => ({ ...prev, [key]: type === 'number' ? parseFloat(e.target.value) || 0 : e.target.value }))}
+                      className="w-full border border-[#ced4da] rounded px-2 py-1 text-xs text-[#5a5a5a] focus:outline-none focus:border-[#5a5a5a]" />
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* 土地（戸建て・土地のみ） / アクセス・権利（マンション） */}
           <section>
-            <h2 className="text-xs font-medium text-[#5a5a5a] mb-2 uppercase tracking-widest">土地の概要</h2>
+            <h2 className="text-xs font-medium text-[#5a5a5a] mb-2 uppercase tracking-widest">
+              {isMansion ? 'アクセス・権利' : '土地の概要'}
+            </h2>
             <div className="grid grid-cols-2 gap-2">
-              {/* 路線価 - 自動取得ボタン付き */}
-              <div>
-                <label className="block text-[10px] text-[#9a9a9a] mb-0.5">地積 (㎡)</label>
-                <input type="number" step="0.01" value={land.totalArea || ''} placeholder="0.00"
-                  onChange={e => setLand(prev => ({ ...prev, totalArea: parseFloat(e.target.value) || 0 }))}
-                  className="w-full border border-[#ced4da] rounded px-2 py-1 text-xs text-[#5a5a5a] focus:outline-none focus:border-[#5a5a5a]" />
-              </div>
-              <div>
-                <label className="block text-[10px] text-[#9a9a9a] mb-0.5">セットバック (㎡)</label>
-                <input type="number" step="0.01" value={land.setback || ''} placeholder="0.00"
-                  onChange={e => setLand(prev => ({ ...prev, setback: parseFloat(e.target.value) || 0 }))}
-                  className="w-full border border-[#ced4da] rounded px-2 py-1 text-xs text-[#5a5a5a] focus:outline-none focus:border-[#5a5a5a]" />
-              </div>
-              <div className="col-span-2">
-                <label className="block text-[10px] text-[#9a9a9a] mb-0.5">路線価 (円/㎡)</label>
-                <input type="number" value={land.rosenka || ''} placeholder="80000"
-                  onChange={e => setLand(prev => ({ ...prev, rosenka: parseInt(e.target.value) || 0 }))}
-                  className="w-full border border-[#ced4da] rounded px-2 py-1 text-xs text-[#5a5a5a] focus:outline-none focus:border-[#5a5a5a]" />
-              </div>
+              {!isMansion && (
+                <>
+                  <div>
+                    <label className="block text-[10px] text-[#9a9a9a] mb-0.5">地積 (㎡)</label>
+                    <input type="number" step="0.01" value={land.totalArea || ''} placeholder="0.00"
+                      onChange={e => setLand(prev => ({ ...prev, totalArea: parseFloat(e.target.value) || 0 }))}
+                      className="w-full border border-[#ced4da] rounded px-2 py-1 text-xs text-[#5a5a5a] focus:outline-none focus:border-[#5a5a5a]" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] text-[#9a9a9a] mb-0.5">セットバック (㎡)</label>
+                    <input type="number" step="0.01" value={land.setback || ''} placeholder="0.00"
+                      onChange={e => setLand(prev => ({ ...prev, setback: parseFloat(e.target.value) || 0 }))}
+                      className="w-full border border-[#ced4da] rounded px-2 py-1 text-xs text-[#5a5a5a] focus:outline-none focus:border-[#5a5a5a]" />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-[10px] text-[#9a9a9a] mb-0.5">路線価 (円/㎡)</label>
+                    <input type="number" value={land.rosenka || ''} placeholder="80000"
+                      onChange={e => setLand(prev => ({ ...prev, rosenka: parseInt(e.target.value) || 0 }))}
+                      className="w-full border border-[#ced4da] rounded px-2 py-1 text-xs text-[#5a5a5a] focus:outline-none focus:border-[#5a5a5a]" />
+                  </div>
+                  {([
+                    ['前面道路', 'usefulRoad', 'text', '南東側4.5m'],
+                    ['土地形状', 'shape', 'text', '整形'],
+                  ] as [string, keyof typeof land, string, string][]).map(([label, key, type, ph]) => (
+                    <div key={key}>
+                      <label className="block text-[10px] text-[#9a9a9a] mb-0.5">{label}</label>
+                      <input type={type} value={(land as Record<string, number | string>)[key] || ''} placeholder={ph}
+                        onChange={e => setLand(prev => ({ ...prev, [key]: e.target.value }))}
+                        className="w-full border border-[#ced4da] rounded px-2 py-1 text-xs text-[#5a5a5a] focus:outline-none focus:border-[#5a5a5a]" />
+                    </div>
+                  ))}
+                </>
+              )}
               {([
-                ['前面道路', 'usefulRoad', 'text', '南東側4.5m'],
                 ['沿線名', 'railway', 'text', 'JR呉線'],
                 ['最寄駅', 'station', 'text', '呉駅'],
                 ['徒歩 (分)', 'walkTime', 'number', '10'],
-                ['土地形状', 'shape', 'text', '整形'],
-                ['権利区分', 'rights', 'text', '所有権'],
+                ['権利区分', 'rights', 'text', isMansion ? '区分所有' : '所有権'],
                 ['市場流通性', 'marketability', 'text', '普通'],
-
               ] as [string, keyof typeof land, string, string][]).map(([label, key, type, ph]) => (
                 <div key={key}>
                   <label className="block text-[10px] text-[#9a9a9a] mb-0.5">{label}</label>
@@ -595,13 +648,13 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
           {/* 取引事例 */}
           <section>
             <div className="flex items-center justify-between mb-2">
-              <h2 className="text-xs font-medium text-[#5a5a5a] uppercase tracking-widest">土地 取引事例</h2>
+              <h2 className="text-xs font-medium text-[#5a5a5a] uppercase tracking-widest">{isMansion ? '取引事例（区分マンション）' : '土地 取引事例'}</h2>
             </div>
             <table className="w-full text-[9px] border-collapse">
               <thead>
                 <tr>
                   <th className="p-1 text-left text-[#9a9a9a] border-b border-[#ced4da]">事例</th>
-                  <th className="p-1 text-right text-[#9a9a9a] border-b border-[#ced4da]">単価</th>
+                  <th className="p-1 text-right text-[#9a9a9a] border-b border-[#ced4da]">{isMansion ? '円/㎡' : '単価'}</th>
                   <th className="p-1 text-right text-[#9a9a9a] border-b border-[#ced4da]">時点</th>
                   <th className="p-1 text-right text-[#9a9a9a] border-b border-[#ced4da]">地域</th>
                 </tr>
@@ -630,7 +683,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
             <div className="grid grid-cols-3 gap-2">
               {(['land', 'building', 'income'] as const).map((k, i) => (
                 <div key={k}>
-                  <label className="block text-[10px] text-[#9a9a9a] mb-0.5">{['土地 (%)', '建物 (%)', '収益 (%)'][i]}</label>
+                  <label className="block text-[10px] text-[#9a9a9a] mb-0.5">{[isMansion ? '事例 (%)' : '土地 (%)', '建物 (%)', '収益 (%)'][i]}</label>
                   <input type="number" value={weights[k]} onChange={e => setWeights(prev => ({ ...prev, [k]: parseInt(e.target.value) || 0 }))}
                     className="w-full border border-[#ced4da] rounded px-2 py-1 text-xs text-center text-[#5a5a5a] focus:outline-none focus:border-[#5a5a5a]" />
                 </div>
@@ -754,7 +807,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                   <p style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: '#9a9a9a', marginBottom: '6px' }}>査定算出 総合評価額</p>
                   <p style={{ fontSize: '28px', fontWeight: '700', color: '#1a1a1a', fontFamily: '"Noto Serif JP", serif' }}>{formatNum(totalEval)} <span style={{ fontSize: '12px', fontWeight: '400', color: '#5a5a5a' }}>円</span></p>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #ced4da' }}>
-                    <div style={{ fontSize: '9px', color: '#9a9a9a' }}>土地評価 ({weights.land}%)<br /><span style={{ color: '#1a1a1a', fontWeight: '600', fontSize: '10px' }}>{formatNum(landEval.total)}円</span></div>
+                    <div style={{ fontSize: '9px', color: '#9a9a9a' }}>{isMansion ? '事例評価' : '土地評価'} ({weights.land}%)<br /><span style={{ color: '#1a1a1a', fontWeight: '600', fontSize: '10px' }}>{formatNum(caseEvalTotal)}円</span></div>
                     <div style={{ fontSize: '9px', color: '#9a9a9a' }}>建物評価 ({weights.building}%)<br /><span style={{ color: '#1a1a1a', fontWeight: '600', fontSize: '10px' }}>{formatNum(buildingEval.total)}円</span></div>
                     <div style={{ fontSize: '9px', color: '#9a9a9a' }}>収益評価 ({weights.income}%)<br /><span style={{ color: '#1a1a1a', fontWeight: '600', fontSize: '10px' }}>{formatNum(incomeEval)}円</span></div>
                   </div>
@@ -777,56 +830,97 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                   </table>
                 </div>
 
-                {/* 土地の概要 */}
-                <div style={{ marginBottom: '14px' }}>
-                  <SectionHead>土地の概要</SectionHead>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <tbody>
-                      <tr>
-                        <TdHead>総地積</TdHead>
-                        <Td>{land.totalArea.toFixed(2)} ㎡（セットバック {land.setback.toFixed(2)} ㎡）</Td>
-                        <TdHead>有効面積</TdHead>
-                        <Td bold>{validLandArea.toFixed(2)} ㎡</Td>
-                      </tr>
-                      <tr>
-                        <TdHead>前面道路路線価</TdHead>
-                        <Td bold>{formatNum(land.rosenka)} 円/㎡</Td>
-                        <TdHead>交通機関</TdHead>
-                        <Td>{land.railway} {land.station}駅 徒歩{land.walkTime}分</Td>
-                      </tr>
-                      <tr>
-                        <TdHead>前面道路</TdHead>
-                        <Td>{land.usefulRoad || '—'}</Td>
-                        <TdHead>土地形状</TdHead>
-                        <Td>{land.shape || '—'}</Td>
-                      </tr>
-                      <tr>
-                        <TdHead>権利関係</TdHead>
-                        <Td>{land.rights || '—'}</Td>
-                        <TdHead>流通・市場性</TdHead>
-                        <Td>{land.marketability || '—'}</Td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                {/* 土地の概要 / マンション概要 */}
+                {isMansion ? (
+                  <div style={{ marginBottom: '14px' }}>
+                    <SectionHead>マンション概要</SectionHead>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <tbody>
+                        <tr>
+                          <TdHead>所在階 / 総階数</TdHead>
+                          <Td>{mansion.floor}階 / {mansion.totalFloors}階建</Td>
+                          <TdHead>向き</TdHead>
+                          <Td>{mansion.direction || '—'}</Td>
+                        </tr>
+                        <tr>
+                          <TdHead>専有面積</TdHead>
+                          <Td bold>{building.floorArea.toFixed(2)} ㎡</Td>
+                          <TdHead>交通機関</TdHead>
+                          <Td>{land.railway} {land.station}駅 徒歩{land.walkTime}分</Td>
+                        </tr>
+                        <tr>
+                          <TdHead>構造</TdHead>
+                          <Td>{building.structure || '—'}</Td>
+                          <Td right>築 {building.age} 年（耐用 {building.usefulLife}年）</Td>
+                          <TdHead>権利</TdHead>
+                          <Td>{land.rights || '区分所有'}</Td>
+                        </tr>
+                        <tr>
+                          <TdHead>管理費</TdHead>
+                          <Td>{formatNum(mansion.managementFee)} 円/月</Td>
+                          <TdHead>修繕積立金</TdHead>
+                          <Td>{formatNum(mansion.repairFund)} 円/月</Td>
+                        </tr>
+                        <tr>
+                          <TdHead>流通・市場性</TdHead>
+                          <td colSpan={3} className="p-1.5 text-[9.5px] border border-[#ced4da] text-[#5a5a5a]">{land.marketability || '—'}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div style={{ marginBottom: '14px' }}>
+                    <SectionHead>土地の概要</SectionHead>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <tbody>
+                        <tr>
+                          <TdHead>総地積</TdHead>
+                          <Td>{land.totalArea.toFixed(2)} ㎡（セットバック {land.setback.toFixed(2)} ㎡）</Td>
+                          <TdHead>有効面積</TdHead>
+                          <Td bold>{validLandArea.toFixed(2)} ㎡</Td>
+                        </tr>
+                        <tr>
+                          <TdHead>前面道路路線価</TdHead>
+                          <Td bold>{formatNum(land.rosenka)} 円/㎡</Td>
+                          <TdHead>交通機関</TdHead>
+                          <Td>{land.railway} {land.station}駅 徒歩{land.walkTime}分</Td>
+                        </tr>
+                        <tr>
+                          <TdHead>前面道路</TdHead>
+                          <Td>{land.usefulRoad || '—'}</Td>
+                          <TdHead>土地形状</TdHead>
+                          <Td>{land.shape || '—'}</Td>
+                        </tr>
+                        <tr>
+                          <TdHead>権利関係</TdHead>
+                          <Td>{land.rights || '—'}</Td>
+                          <TdHead>流通・市場性</TdHead>
+                          <Td>{land.marketability || '—'}</Td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
 
-                {/* 建物の概要 */}
-                <div>
-                  <SectionHead>建物の概要</SectionHead>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead>
-                      <tr><Th>種類</Th><Th>構造</Th><Th right>延床面積</Th><Th right>経過年数</Th></tr>
-                    </thead>
-                    <tbody>
-                      <tr>
-                        <Td>居宅</Td>
-                        <Td>{building.structure || '—'}</Td>
-                        <Td right bold>{building.floorArea.toFixed(2)} ㎡</Td>
-                        <Td right>築 {building.age} 年（耐用 {building.usefulLife}年）</Td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+                {/* 建物の概要（戸建て・土地のみ） */}
+                {!isMansion && (
+                  <div>
+                    <SectionHead>建物の概要</SectionHead>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr><Th>種類</Th><Th>構造</Th><Th right>延床面積</Th><Th right>経過年数</Th></tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <Td>居宅</Td>
+                          <Td>{building.structure || '—'}</Td>
+                          <Td right bold>{building.floorArea.toFixed(2)} ㎡</Td>
+                          <Td right>築 {building.age} 年（耐用 {building.usefulLife}年）</Td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
               <PageFooter />
             </div>
@@ -836,9 +930,9 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
               <div style={{ flex: 1 }}>
                 <PageHeader page={2} />
 
-                {/* 土地査定表 */}
+                {/* 取引事例査定表 */}
                 <div style={{ marginBottom: '14px' }}>
-                  <SectionHead>土地の詳細査定表（複数事例比準）</SectionHead>
+                  <SectionHead>{isMansion ? '区分マンション 取引事例比較表（専有面積㎡単価）' : '土地の詳細査定表（複数事例比準）'}</SectionHead>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr>
@@ -848,7 +942,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                     </thead>
                     <tbody>
                       {([
-                        ['価格 (円/㎡)', (c: typeof landEval.cases[0]) => formatNum(c.price)],
+                        [isMansion ? '単価 (円/㎡専有)' : '価格 (円/㎡)', (c: typeof landEval.cases[0]) => formatNum(c.price)],
                         ['時点修正', (c: typeof landEval.cases[0]) => c.timeCorrect.toFixed(2)],
                         ['地域格差', (c: typeof landEval.cases[0]) => c.areaCorrect.toFixed(2)],
                         ['比準単価', (c: typeof landEval.cases[0]) => formatNum(c.calculated)],
@@ -861,9 +955,12 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                     </tbody>
                   </table>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 8px', background: '#f9f9f9', border: '1px solid #ced4da', marginTop: '4px', fontSize: '9px' }}>
-                    <span>比準㎡平均: <strong>{formatNum(landEval.average)} 円/㎡</strong></span>
+                    <span>比準㎡単価平均: <strong>{formatNum(landEval.average)} 円/㎡</strong></span>
                     <span>個別修正: <strong>{individualCorr.toFixed(2)} 倍</strong></span>
-                    <span>土地評価額: <strong>{formatNum(landEval.total)} 円</strong></span>
+                    {isMansion
+                      ? <span>× 専有{building.floorArea}㎡ = <strong>{formatNum(caseEvalTotal)} 円</strong></span>
+                      : <span>土地評価額: <strong>{formatNum(caseEvalTotal)} 円</strong></span>
+                    }
                   </div>
                 </div>
 
