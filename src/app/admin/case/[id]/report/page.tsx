@@ -84,7 +84,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
 
   // Map images
   const [rosenkaMap, setRosenkaMap] = useState<string>('')
-
+  const [zoneMap, setZoneMap] = useState<string>('')
   const [registryImages, setRegistryImages] = useState<string[]>([])
 
   // Load case + auto-fetch everything
@@ -147,6 +147,13 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
             body: JSON.stringify({ address, type: 'rosenka' }),
           }).then(r => r.json()).then(d => {
             if (d.image) setRosenkaMap(d.image)
+          }).catch(() => {}),
+
+          fetch(`/api/cases/${id}/fetch-map`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address, type: 'zone' }),
+          }).then(r => r.json()).then(d => {
+            if (d.image) setZoneMap(d.image)
           }).catch(() => {}),
 
           fetch(`/api/cases/${id}/fetch-cases`, {
@@ -725,6 +732,15 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                   className="w-full text-[10px] text-[#9a9a9a] file:mr-2 file:py-1 file:px-2 file:border file:border-[#ced4da] file:bg-white file:text-[#5a5a5a] file:text-[10px]" />
               </div>
               <div>
+                <label className="block text-[10px] text-[#9a9a9a] mb-0.5">用途地域図</label>
+                {zoneMap
+                  ? <img src={zoneMap} alt="用途地域図プレビュー" className="w-full h-24 object-cover mb-1 border border-[#ced4da]" />
+                  : <p className="text-[9px] text-[#9a9a9a] mb-1">{autoFetching ? '取得中...' : '取得できませんでした'}</p>
+                }
+                <input type="file" accept="image/*" onChange={handleImageUpload(setZoneMap)}
+                  className="w-full text-[10px] text-[#9a9a9a] file:mr-2 file:py-1 file:px-2 file:border file:border-[#ced4da] file:bg-white file:text-[#5a5a5a] file:text-[10px]" />
+              </div>
+              <div>
                 <label className="block text-[10px] text-[#9a9a9a] mb-1">登記資料（PDF・画像 複数可）</label>
                 {registryImages.length > 0 && (
                   <div className="grid grid-cols-3 gap-1 mb-2">
@@ -1021,7 +1037,23 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
               <PageFooter />
             </div>
 
-            {/* PAGE 5: 登記資料 + 免責事項 */}
+            {/* PAGE 5: 用途地域図 */}
+            <div className="pdf-page" style={{ width: '210mm', minHeight: '297mm', padding: '14mm 18mm', background: 'white', boxSizing: 'border-box', boxShadow: '0 2px 12px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', pageBreakAfter: 'always', breakInside: 'avoid', fontFamily: '"Noto Sans JP", "Helvetica Neue", sans-serif', color: '#5a5a5a' }}>
+              <div style={{ flex: 1 }}>
+                <PageHeader page={4} />
+                <SectionHead>都市計画 用途地域図</SectionHead>
+                <div style={{ width: '100%', height: '220mm', border: '1px solid #ced4da', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9f9f9' }}>
+                  {zoneMap ? (
+                    <img src={zoneMap} alt="用途地域図" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                  ) : (
+                    <p style={{ fontSize: '9px', color: '#9a9a9a' }}>用途地域図をアップロードしてください</p>
+                  )}
+                </div>
+              </div>
+              <PageFooter />
+            </div>
+
+            {/* PAGE 6: 登記資料 + 免責事項 */}
             <div className="pdf-page" style={{ width: '210mm', minHeight: '297mm', padding: '14mm 18mm', background: 'white', boxSizing: 'border-box', boxShadow: '0 2px 12px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', fontFamily: '"Noto Sans JP", "Helvetica Neue", sans-serif', color: '#5a5a5a' }}>
               <div style={{ flex: 1 }}>
                 <PageHeader page={5} />
