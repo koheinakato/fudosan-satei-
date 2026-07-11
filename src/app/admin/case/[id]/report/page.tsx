@@ -55,7 +55,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
   const [land, setLand] = useState({
     totalArea: 0, setback: 0, rosenka: 0,
     usefulRoad: '', railway: '', station: '', walkTime: 0,
-    useDistrict: '', buildingCoverage: 0, floorCoverage: 0,
+
     shape: '', rights: '所有権', marketability: '普通',
   })
 
@@ -79,7 +79,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
 
   // Map images
   const [rosenkaMap, setRosenkaMap] = useState<string>('')
-  const [zoneMap, setZoneMap] = useState<string>('')
+
   const [registryImages, setRegistryImages] = useState<string[]>([])
 
   // Load case + auto-fetch everything
@@ -142,13 +142,6 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
             if (d.image) setRosenkaMap(d.image)
           }).catch(() => {}),
 
-          fetch(`/api/cases/${id}/fetch-map`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ address, type: 'zone' }),
-          }).then(r => r.json()).then(d => {
-            if (d.image) setZoneMap(d.image)
-          }).catch(() => {}),
-
           fetch(`/api/cases/${id}/fetch-cases`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ address, propertyType: c.property_type, rosenka: rosenkaVal }),
@@ -161,9 +154,6 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
             if (!d.error) {
               setLand(prev => ({
                 ...prev,
-                useDistrict: d.useDistrict || prev.useDistrict,
-                buildingCoverage: d.buildingCoverage || prev.buildingCoverage,
-                floorCoverage: d.floorCoverage || prev.floorCoverage,
                 railway: d.railway || prev.railway,
                 station: d.station || prev.station,
                 walkTime: d.walkTime || prev.walkTime,
@@ -374,9 +364,6 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
           landArea: land.totalArea,
           setback: land.setback,
           rosenka: land.rosenka,
-          useDistrict: land.useDistrict,
-          buildingCoverage: land.buildingCoverage,
-          floorCoverage: land.floorCoverage,
           railway: land.railway,
           station: land.station,
           walkTime: land.walkTime,
@@ -567,9 +554,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                 ['土地形状', 'shape', 'text', '整形'],
                 ['権利区分', 'rights', 'text', '所有権'],
                 ['市場流通性', 'marketability', 'text', '普通'],
-                ['用途地域', 'useDistrict', 'text', '第1種中高層'],
-                ['建蔽率 (%)', 'buildingCoverage', 'number', '60'],
-                ['容積率 (%)', 'floorCoverage', 'number', '200'],
+
               ] as [string, keyof typeof land, string, string][]).map(([label, key, type, ph]) => (
                 <div key={key}>
                   <label className="block text-[10px] text-[#9a9a9a] mb-0.5">{label}</label>
@@ -684,15 +669,6 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                   : <p className="text-[9px] text-[#9a9a9a] mb-1">{autoFetching ? '取得中...' : '取得できませんでした'}</p>
                 }
                 <input type="file" accept="image/*" onChange={handleImageUpload(setRosenkaMap)}
-                  className="w-full text-[10px] text-[#9a9a9a] file:mr-2 file:py-1 file:px-2 file:border file:border-[#ced4da] file:bg-white file:text-[#5a5a5a] file:text-[10px]" />
-              </div>
-              <div>
-                <label className="block text-[10px] text-[#9a9a9a] mb-0.5">用途地域図</label>
-                {zoneMap
-                  ? <img src={zoneMap} alt="用途地域図プレビュー" className="w-full h-24 object-cover mb-1 border border-[#ced4da]" />
-                  : <p className="text-[9px] text-[#9a9a9a] mb-1">{autoFetching ? '取得中...' : '取得できませんでした'}</p>
-                }
-                <input type="file" accept="image/*" onChange={handleImageUpload(setZoneMap)}
                   className="w-full text-[10px] text-[#9a9a9a] file:mr-2 file:py-1 file:px-2 file:border file:border-[#ced4da] file:bg-white file:text-[#5a5a5a] file:text-[10px]" />
               </div>
               <div>
@@ -817,12 +793,6 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                         <Td bold>{formatNum(land.rosenka)} 円/㎡</Td>
                         <TdHead>交通機関</TdHead>
                         <Td>{land.railway} {land.station}駅 徒歩{land.walkTime}分</Td>
-                      </tr>
-                      <tr>
-                        <TdHead>用途地域</TdHead>
-                        <Td>{land.useDistrict || '—'}</Td>
-                        <TdHead>建蔽率 / 容積率</TdHead>
-                        <Td>{land.buildingCoverage}% / {land.floorCoverage}%</Td>
                       </tr>
                       <tr>
                         <TdHead>前面道路</TdHead>
@@ -954,28 +924,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
               <PageFooter />
             </div>
 
-            {/* PAGE 5: 用途地域図 */}
-            <div className="pdf-page" style={{ width: '210mm', minHeight: '297mm', padding: '14mm 18mm', background: 'white', boxSizing: 'border-box', boxShadow: '0 2px 12px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', pageBreakAfter: 'always', breakInside: 'avoid', fontFamily: '"Noto Sans JP", "Helvetica Neue", sans-serif', color: '#5a5a5a' }}>
-              <div style={{ flex: 1 }}>
-                <PageHeader page={4} />
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <SectionHead>都市計画 用途地域図</SectionHead>
-                  {land.useDistrict && (
-                    <span style={{ fontSize: '9px', border: '1px solid #ced4da', padding: '2px 8px', color: '#5a5a5a' }}>指定区分: {land.useDistrict}</span>
-                  )}
-                </div>
-                <div style={{ width: '100%', height: '220mm', border: '1px solid #ced4da', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9f9f9' }}>
-                  {zoneMap ? (
-                    <img src={zoneMap} alt="用途地域図" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                  ) : (
-                    <p style={{ fontSize: '9px', color: '#9a9a9a' }}>用途地域図をアップロードしてください</p>
-                  )}
-                </div>
-              </div>
-              <PageFooter />
-            </div>
-
-            {/* PAGE 6: 登記資料 + 免責事項 */}
+            {/* PAGE 5: 登記資料 + 免責事項 */}
             <div className="pdf-page" style={{ width: '210mm', minHeight: '297mm', padding: '14mm 18mm', background: 'white', boxSizing: 'border-box', boxShadow: '0 2px 12px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', fontFamily: '"Noto Sans JP", "Helvetica Neue", sans-serif', color: '#5a5a5a' }}>
               <div style={{ flex: 1 }}>
                 <PageHeader page={5} />
