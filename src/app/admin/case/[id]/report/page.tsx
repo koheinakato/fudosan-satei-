@@ -108,6 +108,8 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                 if (parsed.address) setInfo(prev => ({ ...prev, address: parsed.address || prev.address, jyukyoHyoji: parsed.jyukyoHyoji || prev.jyukyoHyoji, chiban: parsed.chiban || prev.chiban, kaheiNumber: parsed.kaheiNumber || prev.kaheiNumber, propertyName: parsed.propertyName || prev.propertyName }))
                 if (parsed.landArea) setLand(prev => ({ ...prev, totalArea: parsed.landArea }))
                 if (parsed.floorArea) setBuilding(prev => ({ ...prev, floorArea: parsed.floorArea, structure: parsed.structure || prev.structure, age: parsed.builtYear ? new Date().getFullYear() - parsed.builtYear : prev.age }))
+                if (parsed.mansionFloor) setMansion(prev => ({ ...prev, floor: parsed.mansionFloor }))
+                if (parsed.mansionTotalFloors) setMansion(prev => ({ ...prev, totalFloors: parsed.mansionTotalFloors }))
               }
             }).catch(() => {})
         }
@@ -360,6 +362,8 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
       if (parsed.address) setInfo(prev => ({ ...prev, address: parsed.address, jyukyoHyoji: parsed.jyukyoHyoji || prev.jyukyoHyoji, chiban: parsed.chiban || prev.chiban, kaheiNumber: parsed.kaheiNumber || prev.kaheiNumber, propertyName: parsed.propertyName || prev.propertyName }))
       if (parsed.landArea) setLand(prev => ({ ...prev, totalArea: parsed.landArea }))
       if (parsed.floorArea) setBuilding(prev => ({ ...prev, floorArea: parsed.floorArea, structure: parsed.structure || prev.structure, age: parsed.builtYear ? new Date().getFullYear() - parsed.builtYear : prev.age }))
+      if (parsed.mansionFloor) setMansion(prev => ({ ...prev, floor: parsed.mansionFloor }))
+      if (parsed.mansionTotalFloors) setMansion(prev => ({ ...prev, totalFloors: parsed.mansionTotalFloors }))
       setMessage('登記情報を自動入力しました')
     } catch (err) {
       setMessage(`PDF解析エラー: ${err instanceof Error ? err.message : String(err)}`)
@@ -701,7 +705,8 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
 
           {/* 収益 */}
           <section>
-            <h2 className="text-xs font-medium text-[#5a5a5a] mb-2 uppercase tracking-widest">収益還元（参考）</h2>
+            <h2 className="text-xs font-medium text-[#5a5a5a] mb-1 uppercase tracking-widest">収益還元</h2>
+            <p className="text-[9px] text-[#9a9a9a] mb-2">※ AI算出（参考値）。査定への影響はウェイトで調整してください。</p>
             <div className="grid grid-cols-2 gap-2">
               {([
                 ['月額想定賃料 (円)', 'monthlyRent'],
@@ -825,7 +830,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #ced4da' }}>
                     <div style={{ fontSize: '9px', color: '#9a9a9a' }}>{isMansion ? '事例評価' : '土地評価'} ({weights.land}%)<br /><span style={{ color: '#1a1a1a', fontWeight: '600', fontSize: '10px' }}>{formatNum(caseEvalTotal)}円</span></div>
                     <div style={{ fontSize: '9px', color: '#9a9a9a' }}>建物評価 ({weights.building}%)<br /><span style={{ color: '#1a1a1a', fontWeight: '600', fontSize: '10px' }}>{formatNum(buildingEval.total)}円</span></div>
-                    <div style={{ fontSize: '9px', color: '#9a9a9a' }}>収益評価 ({weights.income}%)<br /><span style={{ color: '#1a1a1a', fontWeight: '600', fontSize: '10px' }}>{formatNum(incomeEval)}円</span></div>
+                    <div style={{ fontSize: '9px', color: '#9a9a9a' }}>収益評価 ({weights.income}%)<br /><span style={{ color: '#1a1a1a', fontWeight: '600', fontSize: '10px' }}>{formatNum(incomeEval)}円</span><br /><span style={{ fontSize: '7px', color: '#aaa' }}>※AI参考</span></div>
                   </div>
                 </div>
 
