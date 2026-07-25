@@ -439,7 +439,6 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
     setPdfLoading(true)
     setMessage('PDF生成中...')
     try {
-      const html2pdf = (await import('html2pdf.js')).default
       const el = document.getElementById('pdf-print-area')!
       const pages = el.getElementsByClassName('pdf-page')
       el.style.gap = '0'
@@ -470,14 +469,29 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
           }
         }
       }
-      await html2pdf().set({
-        margin: 0,
-        filename: `${info.propertyName || '不動産査定書'}_不動産評価レポート.pdf`,
-        image: { type: 'jpeg', quality: 1.0 },
-        html2canvas: { scale: 4, dpi: 300, useCORS: true, scrollY: 0, onclone: replaceModernColors },
-        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
-        // pagebreak handled via page-break-after CSS
-      }).from(el).save()
+      // html2pdfの自動ページ分割は0.5px単位のズレで白紙ページを生むため、
+      // 印刷領域全体を1回で描画し、各ページの実測位置で自前スライスして組み立てる
+      const html2canvas = (await import('html2canvas')).default
+      const { jsPDF } = await import('jspdf')
+      const elRect = el.getBoundingClientRect()
+      const canvas = await html2canvas(el, {
+        scale: 4, useCORS: true, scrollY: 0,
+        backgroundColor: '#ffffff', onclone: replaceModernColors,
+      })
+      const ratio = canvas.height / elRect.height
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+      for (let i = 0; i < pages.length; i++) {
+        const r = (pages[i] as HTMLElement).getBoundingClientRect()
+        const sy = Math.round((r.top - elRect.top) * ratio)
+        const sh = Math.round(r.height * ratio)
+        const pageCanvas = document.createElement('canvas')
+        pageCanvas.width = canvas.width
+        pageCanvas.height = sh
+        pageCanvas.getContext('2d')!.drawImage(canvas, 0, sy, canvas.width, sh, 0, 0, canvas.width, sh)
+        if (i > 0) pdf.addPage()
+        pdf.addImage(pageCanvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297)
+      }
+      pdf.save(`${info.propertyName || '不動産査定書'}_不動産評価レポート.pdf`)
       el.style.gap = ''
       el.style.width = ''
       for (let i = 0; i < pages.length; i++) {
