@@ -448,11 +448,33 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
         (pages[i] as HTMLElement).style.boxShadow = 'none'
         ;(pages[i] as HTMLElement).style.margin = '0'
       }
+      // Tailwind v4はデフォルト境界色などをlab()で出力するが、html2canvasが
+      // lab()/oklch()を解釈できないため、クローン側でRGBに置き換える
+      // html2pdfは印刷領域を文書内に複製してから描画するため、
+      // 文書全体(複製側を含む)を対象にlab()系の色を置き換える必要がある
+      const replaceModernColors = (doc: Document) => {
+        const win = doc.defaultView
+        if (!win) return
+        const props = [
+          'color', 'background-color', 'border-top-color', 'border-right-color',
+          'border-bottom-color', 'border-left-color', 'outline-color',
+          'text-decoration-color', 'caret-color', 'column-rule-color',
+        ]
+        for (const node of Array.from(doc.body.querySelectorAll<HTMLElement>('*'))) {
+          const cs = win.getComputedStyle(node)
+          for (const prop of props) {
+            const v = cs.getPropertyValue(prop)
+            if (/\b(lab|lch|oklab|oklch|color)\(/.test(v)) {
+              node.style.setProperty(prop, prop === 'background-color' ? 'transparent' : '#ced4da')
+            }
+          }
+        }
+      }
       await html2pdf().set({
         margin: 0,
         filename: `${info.propertyName || '不動産査定書'}_不動産評価レポート.pdf`,
         image: { type: 'jpeg', quality: 1.0 },
-        html2canvas: { scale: 4, dpi: 300, useCORS: true, scrollY: 0 },
+        html2canvas: { scale: 4, dpi: 300, useCORS: true, scrollY: 0, onclone: replaceModernColors },
         jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
         // pagebreak handled via page-break-after CSS
       }).from(el).save()
@@ -463,8 +485,9 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
         ;(pages[i] as HTMLElement).style.margin = ''
       }
       setMessage('PDF出力完了')
-    } catch {
-      setMessage('PDF出力に失敗しました')
+    } catch (e) {
+      console.error('PDF出力エラー:', e)
+      setMessage(`PDF出力に失敗しました: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setPdfLoading(false)
     }
