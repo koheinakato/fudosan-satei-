@@ -71,6 +71,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
 
   // Cases
   const [cases, setCases] = useState<CaseItem[]>(defaultCases)
+  const [casesSource, setCasesSource] = useState('')
   const [individualCorr, setIndividualCorr] = useState(1.00)
   const [obsCorr, setObsCorr] = useState(1.00)
 
@@ -161,7 +162,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
           fetch(`/api/cases/${id}/fetch-cases`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ address, propertyType: c.property_type, rosenka: rosenkaVal }),
-          }).then(r => r.json()).then(d => { if (d.cases) setCases(d.cases) }).catch(() => {}),
+          }).then(r => r.json()).then(d => { if (d.cases) { setCases(d.cases); setCasesSource(d.source || '') } }).catch(() => {}),
 
           fetch(`/api/cases/${id}/fetch-land-info`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -983,6 +984,11 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                       : <span>土地評価額: <strong>{formatNum(caseEvalTotal)} 円</strong></span>
                     }
                   </div>
+                  {casesSource === 'reinfolib' && (
+                    <p style={{ fontSize: '7px', color: '#9a9a9a', marginTop: '2px' }}>
+                      出典：国土交通省 不動産情報ライブラリ（地価公示・都道府県地価調査・不動産取引価格情報）を加工して作成
+                    </p>
+                  )}
                 </div>
 
                 {/* 建物査定表 */}
