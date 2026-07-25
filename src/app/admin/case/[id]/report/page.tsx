@@ -86,6 +86,11 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
   // Map images
   const [rosenkaMap, setRosenkaMap] = useState<string>('')
   const [zoneMap, setZoneMap] = useState<string>('')
+  const [chikaMap, setChikaMap] = useState<string>('')
+  const [chikaPoints, setChikaPoints] = useState<{
+    label: string; name: string; type: string; price: number
+    yoyRate: number | null; useDistrict: string; distance: number
+  }[]>([])
   const [registryImages, setRegistryImages] = useState<string[]>([])
 
   // Load case + auto-fetch everything
@@ -147,9 +152,9 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
         await Promise.all([
           fetch(`/api/cases/${id}/fetch-map`, {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ address, type: 'rosenka' }),
+            body: JSON.stringify({ address, type: 'chika' }),
           }).then(r => r.json()).then(d => {
-            if (d.image) setRosenkaMap(d.image)
+            if (d.image) { setChikaMap(d.image); setChikaPoints(d.points || []) }
           }).catch(() => {}),
 
           fetch(`/api/cases/${id}/fetch-map`, {
@@ -729,10 +734,12 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
             <h2 className="text-xs font-medium text-[#5a5a5a] mb-2 uppercase tracking-widest">地図・登記資料 画像</h2>
             <div className="space-y-2">
               <div>
-                <label className="block text-[10px] text-[#9a9a9a] mb-0.5">路線価住宅地図</label>
+                <label className="block text-[10px] text-[#9a9a9a] mb-0.5">周辺地価マップ（自動生成／路線価図をアップロードすると差し替え）</label>
                 {rosenkaMap
                   ? <img src={rosenkaMap} alt="路線価住宅地図プレビュー" className="w-full h-24 object-cover mb-1 border border-[#ced4da]" />
-                  : <p className="text-[9px] text-[#9a9a9a] mb-1">{autoFetching ? '取得中...' : '取得できませんでした'}</p>
+                  : chikaMap
+                    ? <img src={chikaMap} alt="周辺地価マッププレビュー" className="w-full h-24 object-cover mb-1 border border-[#ced4da]" />
+                    : <p className="text-[9px] text-[#9a9a9a] mb-1">{autoFetching ? '取得中...' : '取得できませんでした'}</p>
                 }
                 <input type="file" accept="image/*" onChange={handleImageUpload(setRosenkaMap)}
                   className="w-full text-[10px] text-[#9a9a9a] file:mr-2 file:py-1 file:px-2 file:border file:border-[#ced4da] file:bg-white file:text-[#5a5a5a] file:text-[10px]" />
@@ -1032,18 +1039,59 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
               <PageFooter />
             </div>
 
-            {/* PAGE 4: 路線価住宅地図 */}
+            {/* PAGE 4: 路線価住宅地図(手動アップロード) or 周辺地価マップ(自動生成) */}
             <div className="pdf-page" style={{ width: '210mm', minHeight: '297mm', padding: '14mm 18mm', background: 'white', boxSizing: 'border-box', boxShadow: '0 2px 12px rgba(0,0,0,0.12)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', pageBreakAfter: 'always', breakInside: 'avoid', fontFamily: '"Noto Sans JP", "Helvetica Neue", sans-serif', color: '#5a5a5a' }}>
               <div style={{ flex: 1 }}>
                 <PageHeader page={3} />
-                <SectionHead>路線価住宅地図</SectionHead>
-                <div style={{ width: '100%', height: '220mm', border: '1px solid #ced4da', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9f9f9' }}>
-                  {rosenkaMap ? (
-                    <img src={rosenkaMap} alt="路線価住宅地図" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                  ) : (
-                    <p style={{ fontSize: '9px', color: '#9a9a9a' }}>路線価住宅地図をアップロードしてください</p>
-                  )}
-                </div>
+                {rosenkaMap ? (
+                  <>
+                    <SectionHead>路線価住宅地図</SectionHead>
+                    <div style={{ width: '100%', height: '220mm', border: '1px solid #ced4da', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9f9f9' }}>
+                      <img src={rosenkaMap} alt="路線価住宅地図" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                    </div>
+                  </>
+                ) : chikaMap ? (
+                  <>
+                    <SectionHead>周辺地価マップ（地価公示・都道府県地価調査）</SectionHead>
+                    <div style={{ width: '100%', height: '150mm', border: '1px solid #ced4da', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9f9f9', marginBottom: '8px' }}>
+                      <img src={chikaMap} alt="周辺地価マップ" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                    {chikaPoints.length > 0 && (
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr>
+                            <Th>地点</Th><Th>所在</Th><Th>区分</Th><Th>用途地域</Th>
+                            <Th right>価格 (円/㎡)</Th><Th right>前年比</Th><Th right>対象地から</Th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {chikaPoints.map(p => (
+                            <tr key={p.label}>
+                              <TdHead>{p.label}</TdHead>
+                              <Td>{p.name}</Td>
+                              <Td>{p.type}</Td>
+                              <Td>{p.useDistrict || '−'}</Td>
+                              <Td right>{formatNum(p.price)}</Td>
+                              <Td right>{p.yoyRate != null ? `${p.yoyRate > 0 ? '+' : ''}${p.yoyRate}%` : '−'}</Td>
+                              <Td right>{p.distance >= 1000 ? `${(p.distance / 1000).toFixed(1)}km` : `${p.distance}m`}</Td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                    <p style={{ fontSize: '7px', color: '#9a9a9a', marginTop: '4px' }}>
+                      ※ 赤マーカーが対象地、青マーカー(番号)が各地価地点です。
+                      出典：国土交通省 不動産情報ライブラリ（地価公示・都道府県地価調査）を加工して作成／地図：Google Maps
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <SectionHead>路線価住宅地図</SectionHead>
+                    <div style={{ width: '100%', height: '220mm', border: '1px solid #ced4da', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9f9f9' }}>
+                      <p style={{ fontSize: '9px', color: '#9a9a9a' }}>路線価住宅地図をアップロードしてください</p>
+                    </div>
+                  </>
+                )}
               </div>
               <PageFooter />
             </div>

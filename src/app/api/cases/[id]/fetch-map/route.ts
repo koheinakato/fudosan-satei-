@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { REINFOLIB_ATTRIBUTION, fetchLandPricePoints } from '@/lib/reinfolib'
 
 function isJapanese(s: string): boolean {
   return /[　-鿿豈-﫿＀-￯]/.test(s)
@@ -93,6 +94,53 @@ export async function POST(req: Request) {
   }
 
   const { lat, lng } = coords
+
+  // 周辺地価マップ: 対象地(赤)+地価公示・地価調査ポイント(青・番号)を1枚に描画
+  if (type === 'chika') {
+    let points: Awaited<ReturnType<typeof fetchLandPricePoints>> = []
+    try {
+      points = (await fetchLandPricePoints(lat, lng)).filter(p => p.distance <= 3000).slice(0, 5)
+    } catch { /* ポイントなしでも対象地のみの地図を返す */ }
+
+    const pointMarkers = points
+      .map((p, i) => `&markers=color:blue|label:${i + 1}|${p.lat},${p.lng}`)
+      .join('')
+    const mapUrl =
+      `https://maps.googleapis.com/maps/api/staticmap` +
+      `?size=640x640` +
+      `&scale=2` +
+      `&maptype=roadmap` +
+      (points.length === 0 ? `&zoom=15&center=${lat},${lng}` : '') +
+      `&markers=color:red|size:mid|${lat},${lng}` +
+      pointMarkers +
+      `&language=ja` +
+      `&key=${apiKey}`
+
+    try {
+      const imgRes = await fetch(mapUrl, { cache: 'no-store' })
+      if (!imgRes.ok || !(imgRes.headers.get('content-type') || '').includes('image')) {
+        const body = await imgRes.text()
+        return NextResponse.json({ error: `Maps API エラー (${imgRes.status}): ${body.slice(0, 200)}` }, { status: 500 })
+      }
+      const base64 = Buffer.from(await imgRes.arrayBuffer()).toString('base64')
+      return NextResponse.json({
+        image: `data:image/png;base64,${base64}`,
+        points: points.map((p, i) => ({
+          label: String(i + 1),
+          name: p.name,
+          type: p.type === 0 ? '地価公示' : '地価調査',
+          price: p.price,
+          yoyRate: p.yoyRate,
+          useDistrict: p.useDistrict,
+          distance: p.distance,
+        })),
+        attribution: REINFOLIB_ATTRIBUTION,
+      })
+    } catch (e) {
+      return NextResponse.json({ error: `Maps API 通信エラー: ${e}` }, { status: 500 })
+    }
+  }
+
   const zoom = type === 'zone' ? 15 : 17
   const markerColor = type === 'zone' ? 'blue' : 'red'
 
