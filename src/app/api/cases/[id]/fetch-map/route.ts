@@ -14,9 +14,10 @@ function buildVariants(address: string): string[] {
   }
 
   if (isJapanese(address)) {
-    // 日本語住所: 文字間スペース除去・全角数字→半角・番地正規化
+    // 日本語住所: 文字間スペース除去・全角数字→半角・郵便番号除去・番地正規化
     address = address.replace(/\s+/g, '').trim()
     address = address.replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    address = address.replace(/^〒?\d{3}[-−ー‐]?\d{4}/, '')
     address = address.replace(/番地/g, '番')
 
     push(address)

@@ -28,6 +28,7 @@ const PREF_CODES: Record<string, string> = {
 export function normalizeAddress(address: string): string {
   return address.replace(/\s+/g, '').trim()
     .replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .replace(/^〒?\d{3}[-−ー‐]?\d{4}/, '') // 郵便番号を除去
     .replace(/番地/g, '番')
 }
 
