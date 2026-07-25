@@ -285,6 +285,8 @@ export type NearestStation = {
   railway: string
   operator: string
   distance: number // 直線距離(m)
+  passengers: number | null     // 直近年の乗降客数(人/日)
+  passengersPast: number | null // 最古年(2011年)の乗降客数(人/日)
 }
 
 // XKT015: 国土数値情報(駅別乗降客数)から最寄駅を検索
@@ -312,11 +314,18 @@ export async function fetchNearestStation(lat: number, lng: number): Promise<Nea
             : []) as number[][]
           if (coords.length === 0) return []
           const mid = coords[Math.floor(coords.length / 2)]
+          // S12_009, S12_013, ... 4刻みの連番が年次の乗降客数(2011年〜)
+          const yearlyCounts = Object.entries(p)
+            .filter(([k, v]) => /^S12_0\d\d$/.test(k) && typeof v === 'number' && v >= 100)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([, v]) => v as number)
           return [{
             station: name,
             railway: String(p.S12_003_ja || ''),
             operator: String(p.S12_002_ja || ''),
             distance: Math.round(distanceMeters(lat, lng, mid[1], mid[0])),
+            passengers: yearlyCounts.at(-1) ?? null,
+            passengersPast: yearlyCounts.length > 1 ? yearlyCounts[0] : null,
           }]
         })
       } catch { return [] }
@@ -327,6 +336,64 @@ export async function fetchNearestStation(lat: number, lng: number): Promise<Nea
   // 同名駅(複数路線)は最も近いものだけ残す
   stations.sort((a, b) => a.distance - b.distance)
   return stations[0]
+}
+
+export type FuturePopulation = {
+  baseYear: number
+  basePop: number   // 基準年の周辺人口(250mメッシュ)
+  targetYear: number
+  targetPop: number // 将来推計人口
+  changePct: number // 変化率(%)
+}
+
+// XKT013: 将来推計人口250mメッシュ。対象地点を含むメッシュ(なければタイル内平均)
+export async function fetchFuturePopulation(lat: number, lng: number): Promise<FuturePopulation | null> {
+  const z = 15
+  const { x, y } = latLngToTile(lat, lng, z)
+  const res = await fetch(
+    `${BASE}/XKT013?response_format=geojson&z=${z}&x=${x}&y=${y}`,
+    { headers: apiHeaders(), signal: AbortSignal.timeout(10000) }
+  )
+  if (!res.ok) return null
+  const json = await res.json()
+  type Feature = { geometry?: { type?: string; coordinates?: unknown }; properties?: Record<string, unknown> }
+  const features = (json.features ?? []) as Feature[]
+  if (features.length === 0) return null
+
+  const popsOf = (p: Record<string, unknown>) =>
+    Object.entries(p)
+      .filter(([k]) => /^PT00_\d{4}$/.test(k))
+      .map(([k, v]) => ({ year: parseInt(k.slice(5), 10), pop: parseFloat(String(v)) }))
+      .filter(e => Number.isFinite(e.pop))
+      .sort((a, b) => a.year - b.year)
+
+  const containing = features.find(f => {
+    const g = f.geometry
+    if (!g?.coordinates) return false
+    const polygons = (g.type === 'MultiPolygon' ? g.coordinates : [g.coordinates]) as number[][][][]
+    return polygons.some(rings => pointInPolygon(lat, lng, rings))
+  })
+  const targets = containing ? [containing] : features
+
+  // 対象メッシュ(または周辺平均)の基準年と2050年前後の人口を集計
+  let baseSum = 0, targetSum = 0, baseYear = 0, targetYear = 0, n = 0
+  for (const f of targets) {
+    const pops = popsOf(f.properties ?? {})
+    if (pops.length < 2) continue
+    const base = pops[0]
+    const target = pops.reduce((best, e) =>
+      Math.abs(e.year - 2050) < Math.abs(best.year - 2050) ? e : best)
+    baseSum += base.pop; targetSum += target.pop
+    baseYear = base.year; targetYear = target.year; n++
+  }
+  if (n === 0 || baseSum <= 0) return null
+  return {
+    baseYear,
+    basePop: Math.round(baseSum / n),
+    targetYear,
+    targetPop: Math.round(targetSum / n),
+    changePct: parseFloat((((targetSum / baseSum) - 1) * 100).toFixed(1)),
+  }
 }
 
 export type Transaction = {

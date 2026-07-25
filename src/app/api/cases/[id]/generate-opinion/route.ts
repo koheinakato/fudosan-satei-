@@ -1,4 +1,57 @@
 import { NextResponse } from 'next/server'
+import {
+  normalizeAddress, geocodeJa, fetchLandPricePoints, fetchUseArea,
+  fetchNearestStation, fetchFuturePopulation,
+} from '@/lib/reinfolib'
+
+// 不動産情報ライブラリの実データを所見の根拠として組み立てる
+async function buildMarketSection(rawAddress: string): Promise<string> {
+  const address = normalizeAddress(rawAddress)
+  const coords = await geocodeJa(address)
+  if (!coords) return ''
+
+  const [points, useArea, station, population] = await Promise.all([
+    fetchLandPricePoints(coords.lat, coords.lng).catch(() => []),
+    fetchUseArea(coords.lat, coords.lng).catch(() => null),
+    fetchNearestStation(coords.lat, coords.lng).catch(() => null),
+    fetchFuturePopulation(coords.lat, coords.lng).catch(() => null),
+  ])
+
+  const lines: string[] = []
+  const near = points.filter(p => p.distance <= 3000).slice(0, 3)
+  if (near.length > 0) {
+    lines.push(`- 周辺の地価公示・地価調査: ${near.map(p =>
+      `${p.name}(${p.distance}m) ${p.price.toLocaleString()}円/㎡` +
+      (p.yoyRate != null ? `(前年比${p.yoyRate > 0 ? '+' : ''}${p.yoyRate}%)` : '')
+    ).join('、')}`)
+    const rates = near.map(p => p.yoyRate).filter((r): r is number => r != null)
+    if (rates.length > 0) {
+      const avg = rates.reduce((s, r) => s + r, 0) / rates.length
+      lines.push(`- 周辺地価の平均前年比: ${avg > 0 ? '+' : ''}${avg.toFixed(1)}%`)
+    }
+  }
+  if (useArea?.useDistrict) {
+    lines.push(`- 用途地域: ${useArea.useDistrict}(建蔽率${useArea.buildingCoverage ?? '—'}%・容積率${useArea.floorAreaRatio ?? '—'}%)`)
+  }
+  if (station) {
+    let s = `- 最寄駅: ${station.railway}${station.station}駅(直線${station.distance}m)`
+    if (station.passengers != null) {
+      s += ` 乗降客数 約${station.passengers.toLocaleString()}人/日`
+      if (station.passengersPast != null && station.passengersPast > 0) {
+        const chg = ((station.passengers / station.passengersPast) - 1) * 100
+        s += `(2011年比${chg > 0 ? '+' : ''}${chg.toFixed(0)}%)`
+      }
+    }
+    lines.push(s)
+  }
+  if (population) {
+    lines.push(`- 周辺250mメッシュの将来推計人口: ${population.baseYear}年${population.basePop}人 → ${population.targetYear}年${population.targetPop}人(${population.changePct > 0 ? '+' : ''}${population.changePct}%)`)
+  }
+  if (lines.length === 0) return ''
+  return `
+【市場・立地の実データ（出典: 国土交通省 不動産情報ライブラリ）】
+${lines.join('\n')}`
+}
 
 export async function POST(req: Request) {
   const data = await req.json()
@@ -6,6 +59,19 @@ export async function POST(req: Request) {
   if (!process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json({ error: 'ANTHROPIC_API_KEY が設定されていません' }, { status: 500 })
   }
+
+  let marketSection = ''
+  try {
+    if (data.address && /[　-鿿豈-﫿＀-￯]/.test(String(data.address))) {
+      marketSection = await buildMarketSection(String(data.address))
+    }
+  } catch { /* 実データなしでも所見は生成する */ }
+
+  const casesSection = Array.isArray(data.cases) && data.cases.length > 0
+    ? `
+【査定に採用した事例（実データ）】
+${data.cases.map((c: { name?: string; price?: number }) => `- ${c.name}: ${Number(c.price ?? 0).toLocaleString()}円/㎡`).join('\n')}`
+    : ''
 
   const { Anthropic } = await import('@anthropic-ai/sdk')
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -53,7 +119,11 @@ export async function POST(req: Request) {
 - 物件種別: ${isMansion ? '分譲マンション（区分所有）' : (data.propertyType === 'land' ? '土地' : '戸建て住宅')}
 ${propertySection}
 ${evalSection}
+${marketSection}
+${casesSection}
 
+実データ（地価水準・地価動向・駅利用状況・将来人口など）が提示されている場合は、その中から査定額の根拠づけに有効な要点を選んで所見に自然に織り込んでください。
+提示されたデータにない具体的な数値・事実を創作しないでください。
 総合所見のみを出力してください。見出し・番号・箇条書き不要。`
 
   const message = await client.messages.create({
