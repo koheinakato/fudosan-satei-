@@ -197,6 +197,108 @@ export async function fetchLandPricePoints(lat: number, lng: number): Promise<La
   return points.sort((a, b) => a.distance - b.distance)
 }
 
+// 偶奇則による点のポリゴン内外判定(外環+穴の全リングで交差数を数える)
+function pointInPolygon(lat: number, lng: number, rings: number[][][]): boolean {
+  let inside = false
+  for (const ring of rings) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i]
+      const [xj, yj] = ring[j]
+      if ((yi > lat) !== (yj > lat) && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
+        inside = !inside
+      }
+    }
+  }
+  return inside
+}
+
+export type UseArea = {
+  useDistrict: string
+  buildingCoverage: number | null // 建蔽率(%)
+  floorAreaRatio: number | null   // 容積率(%)
+}
+
+// XKT002: 都市計画決定GISデータ(用途地域)から対象地点の用途地域を判定
+export async function fetchUseArea(lat: number, lng: number): Promise<UseArea | null> {
+  const z = 15
+  const { x, y } = latLngToTile(lat, lng, z)
+  const res = await fetch(
+    `${BASE}/XKT002?response_format=geojson&z=${z}&x=${x}&y=${y}`,
+    { headers: apiHeaders(), signal: AbortSignal.timeout(10000) }
+  )
+  if (!res.ok) return null
+  const json = await res.json()
+  type Feature = {
+    geometry?: { type?: string; coordinates?: unknown }
+    properties?: Record<string, unknown>
+  }
+  for (const f of (json.features ?? []) as Feature[]) {
+    const g = f.geometry
+    if (!g?.coordinates) continue
+    const polygons = (g.type === 'MultiPolygon'
+      ? g.coordinates
+      : [g.coordinates]) as number[][][][]
+    if (polygons.some(rings => pointInPolygon(lat, lng, rings))) {
+      const p = f.properties ?? {}
+      return {
+        useDistrict: String(p.use_area_ja || ''),
+        buildingCoverage: parsePercent(p.u_building_coverage_ratio_ja as string),
+        floorAreaRatio: parsePercent(p.u_floor_area_ratio_ja as string),
+      }
+    }
+  }
+  return null
+}
+
+export type NearestStation = {
+  station: string
+  railway: string
+  operator: string
+  distance: number // 直線距離(m)
+}
+
+// XKT015: 国土数値情報(駅別乗降客数)から最寄駅を検索
+export async function fetchNearestStation(lat: number, lng: number): Promise<NearestStation | null> {
+  const z = 13
+  const { x, y } = latLngToTile(lat, lng, z)
+  const tiles: Promise<NearestStation[]>[] = []
+  for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+    tiles.push((async () => {
+      try {
+        const res = await fetch(
+          `${BASE}/XKT015?response_format=geojson&z=${z}&x=${x + dx}&y=${y + dy}`,
+          { headers: apiHeaders(), signal: AbortSignal.timeout(10000) }
+        )
+        if (!res.ok) return []
+        const json = await res.json()
+        type Feature = { geometry?: { type?: string; coordinates?: unknown }; properties?: Record<string, unknown> }
+        return ((json.features ?? []) as Feature[]).flatMap((f): NearestStation[] => {
+          const p = f.properties ?? {}
+          const name = String(p.S12_001_ja || '')
+          if (!name) return []
+          // 駅はLineString(ホーム線分)なので中点までの距離を使う
+          const coords = (f.geometry?.type === 'LineString'
+            ? f.geometry.coordinates
+            : []) as number[][]
+          if (coords.length === 0) return []
+          const mid = coords[Math.floor(coords.length / 2)]
+          return [{
+            station: name,
+            railway: String(p.S12_003_ja || ''),
+            operator: String(p.S12_002_ja || ''),
+            distance: Math.round(distanceMeters(lat, lng, mid[1], mid[0])),
+          }]
+        })
+      } catch { return [] }
+    })())
+  }
+  const stations = (await Promise.all(tiles)).flat()
+  if (stations.length === 0) return null
+  // 同名駅(複数路線)は最も近いものだけ残す
+  stations.sort((a, b) => a.distance - b.distance)
+  return stations[0]
+}
+
 export type Transaction = {
   Type?: string; Region?: string; DistrictName?: string
   TradePrice?: string; UnitPrice?: string; Area?: string
