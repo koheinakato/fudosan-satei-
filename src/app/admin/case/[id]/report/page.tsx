@@ -34,6 +34,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
   const [generating, setGenerating] = useState(false)
   const [parsing, setParsing] = useState(false)
   const [pdfLoading, setPdfLoading] = useState(false)
+  const [sending, setSending] = useState(false)
   const [autoFetching, setAutoFetching] = useState(false)
   const [message, setMessage] = useState('')
   const autoFetchDone = useRef(false)
@@ -434,19 +435,17 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
     }
   }
 
-  const generatePDF = async () => {
-    if (weightSum !== 100) { setMessage(`ウェイト合計が${weightSum}%です。100%にしてください。`); return }
-    setPdfLoading(true)
-    setMessage('PDF生成中...')
+  // 査定書PDFを生成して返す(ダウンロード・メール送付の両方から使う)
+  const renderPdf = async () => {
+    const el = document.getElementById('pdf-print-area')!
+    const pages = el.getElementsByClassName('pdf-page')
+    el.style.gap = '0'
+    el.style.width = '210mm'
+    for (let i = 0; i < pages.length; i++) {
+      (pages[i] as HTMLElement).style.boxShadow = 'none'
+      ;(pages[i] as HTMLElement).style.margin = '0'
+    }
     try {
-      const el = document.getElementById('pdf-print-area')!
-      const pages = el.getElementsByClassName('pdf-page')
-      el.style.gap = '0'
-      el.style.width = '210mm'
-      for (let i = 0; i < pages.length; i++) {
-        (pages[i] as HTMLElement).style.boxShadow = 'none'
-        ;(pages[i] as HTMLElement).style.margin = '0'
-      }
       // Tailwind v4はデフォルト境界色などをlab()で出力するが、html2canvasが
       // lab()/oklch()を解釈できないため、クローン側でRGBに置き換える
       // html2pdfは印刷領域を文書内に複製してから描画するため、
@@ -491,19 +490,71 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
         if (i > 0) pdf.addPage()
         pdf.addImage(pageCanvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, 210, 297)
       }
-      pdf.save(`${info.propertyName || '不動産査定書'}_不動産評価レポート.pdf`)
+      return { pdf, filename: `${info.propertyName || '不動産査定書'}_不動産評価レポート.pdf` }
+    } finally {
       el.style.gap = ''
       el.style.width = ''
       for (let i = 0; i < pages.length; i++) {
         (pages[i] as HTMLElement).style.boxShadow = ''
         ;(pages[i] as HTMLElement).style.margin = ''
       }
+    }
+  }
+
+  const generatePDF = async () => {
+    if (weightSum !== 100) { setMessage(`ウェイト合計が${weightSum}%です。100%にしてください。`); return }
+    setPdfLoading(true)
+    setMessage('PDF生成中...')
+    try {
+      const { pdf, filename } = await renderPdf()
+      pdf.save(filename)
       setMessage('PDF出力完了')
     } catch (e) {
       console.error('PDF出力エラー:', e)
       setMessage(`PDF出力に失敗しました: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setPdfLoading(false)
+    }
+  }
+
+  const sendReport = async () => {
+    if (weightSum !== 100) { setMessage(`ウェイト合計が${weightSum}%です。100%にしてください。`); return }
+    const email = caseData?.customer_email
+    const name = caseData?.customer_name
+    if (!email) { setMessage('顧客のメールアドレスが登録されていません'); return }
+    if (!confirm(`${name} 様（${email}）へ査定書PDFをメール送付します。よろしいですか？`)) return
+    setSending(true)
+    try {
+      setMessage('査定書PDFを生成中...')
+      const { pdf, filename } = await renderPdf()
+      const blob = pdf.output('blob')
+
+      setMessage('査定書をアップロード中...')
+      const initRes = await fetch(`/api/cases/${id}/send-report`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'upload-url' }),
+      })
+      const init = await initRes.json()
+      if (init.error) throw new Error(init.error)
+      const up = await fetch(init.signedUrl, {
+        method: 'PUT', headers: { 'Content-Type': 'application/pdf' }, body: blob,
+      })
+      if (!up.ok) throw new Error(`アップロードに失敗しました (${up.status})`)
+
+      setMessage('メールを送信中...')
+      const sendRes = await fetch(`/api/cases/${id}/send-report`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'send', filename }),
+      })
+      const sent = await sendRes.json()
+      if (sent.error) throw new Error(sent.error)
+      setCaseData(prev => prev ? { ...prev, status: 'completed' } : prev)
+      setMessage(`査定書を ${sent.to} へ送付しました`)
+    } catch (e) {
+      console.error('査定書送付エラー:', e)
+      setMessage(`送付に失敗しました: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setSending(false)
     }
   }
 
@@ -553,10 +604,17 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
         </div>
         <button
           onClick={generatePDF}
-          disabled={pdfLoading}
+          disabled={pdfLoading || sending}
           className="text-sm px-4 py-1.5 border border-[#5a5a5a] text-[#5a5a5a] hover:bg-[#5a5a5a] hover:text-white transition-colors disabled:opacity-40"
         >
           {pdfLoading ? '生成中...' : 'PDF出力'}
+        </button>
+        <button
+          onClick={sendReport}
+          disabled={pdfLoading || sending}
+          className="text-sm px-4 py-1.5 bg-[#5a5a5a] text-white border border-[#5a5a5a] hover:opacity-80 transition-opacity disabled:opacity-40"
+        >
+          {sending ? '送信中...' : 'お客様へ送付'}
         </button>
       </div>
 
