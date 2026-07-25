@@ -417,6 +417,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
           weightLand: weights.land,
           weightBuilding: weights.building,
           weightIncome: weights.income,
+          cases: casesSource === 'reinfolib' ? cases.map(c => ({ name: c.name, price: c.price })) : [],
         }),
       })
       const d = await res.json()
@@ -879,12 +880,11 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                           <TdHead>専有面積</TdHead>
                           <Td bold>{building.floorArea.toFixed(2)} ㎡</Td>
                           <TdHead>交通機関</TdHead>
-                          <Td>{land.railway} {land.station}駅 徒歩{land.walkTime}分</Td>
+                          <Td>{land.railway} {land.station.replace(/駅$/, '')}駅 徒歩{land.walkTime}分</Td>
                         </tr>
                         <tr>
                           <TdHead>構造</TdHead>
-                          <Td>{building.structure || '—'}</Td>
-                          <Td right>築 {building.age} 年（耐用 {building.usefulLife}年）</Td>
+                          <Td>{building.structure || '—'}（築{building.age}年・耐用{building.usefulLife}年）</Td>
                           <TdHead>権利</TdHead>
                           <Td>{land.rights || '区分所有'}</Td>
                         </tr>
@@ -916,7 +916,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                           <TdHead>前面道路路線価</TdHead>
                           <Td bold>{formatNum(land.rosenka)} 円/㎡</Td>
                           <TdHead>交通機関</TdHead>
-                          <Td>{land.railway} {land.station}駅 徒歩{land.walkTime}分</Td>
+                          <Td>{land.railway} {land.station.replace(/駅$/, '')}駅 徒歩{land.walkTime}分</Td>
                         </tr>
                         <tr>
                           <TdHead>前面道路</TdHead>
