@@ -36,6 +36,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const { error: mailError } = await resend.emails.send({
       from: process.env.FROM_EMAIL!,
       to: c.customer_email,
+      replyTo: 'info@platanus-p.com',
       subject: '【不動産査定】査定書が完成いたしました',
       html: `
         <p style="font-family:'Helvetica Neue',Arial,sans-serif;color:#5a5a5a;line-height:1.8;">
@@ -50,8 +51,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           対象物件: ${c.property_address}
         </p>
         <p style="font-family:'Helvetica Neue',Arial,sans-serif;color:#5a5a5a;line-height:1.8;">
-          内容についてご不明な点がございましたら、本メールへの返信にて<br>
-          お気軽にお問い合わせください。<br>
+          内容についてご不明な点がございましたら、<br>
+          <a href="mailto:info@platanus-p.com" style="color:#5a5a5a;">info@platanus-p.com</a> 宛てにお気軽にお問い合わせください。<br>
+          その際は、対象物件の住所（${c.property_address}）も併せてご記載ください。<br>
           今後ともどうぞよろしくお願いいたします。
         </p>
         <p style="font-family:'Helvetica Neue',Arial,sans-serif;color:#9a9a9a;font-size:12px;line-height:1.8;border-top:1px solid #e0e0e0;padding-top:12px;">
