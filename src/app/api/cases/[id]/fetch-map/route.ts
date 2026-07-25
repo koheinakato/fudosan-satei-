@@ -1,5 +1,112 @@
 import { NextResponse } from 'next/server'
-import { REINFOLIB_ATTRIBUTION, fetchLandPricePoints } from '@/lib/reinfolib'
+import {
+  REINFOLIB_ATTRIBUTION, fetchLandPricePoints,
+  fetchUseAreaFeatures, findContainingUseArea,
+  latLngToTile, latLngToWorldPixel,
+} from '@/lib/reinfolib'
+
+// 用途地域の標準的な色分け(youto_idは法令上の並び: 8=田園住居)
+const YOUTO_COLORS: Record<number, string> = {
+  1: '#8CC63F',  // 第一種低層住居専用地域
+  2: '#B5E08C',  // 第二種低層住居専用地域
+  3: '#C3D825',  // 第一種中高層住居専用地域
+  4: '#DCE775',  // 第二種中高層住居専用地域
+  5: '#F9E265',  // 第一種住居地域
+  6: '#FCEFB4',  // 第二種住居地域
+  7: '#F5B041',  // 準住居地域
+  8: '#A9DFBF',  // 田園住居地域
+  9: '#F8BBD0',  // 近隣商業地域
+  10: '#F1948A', // 商業地域
+  11: '#C39BD3', // 準工業地域
+  12: '#85C1E9', // 工業地域
+  13: '#5499C7', // 工業専用地域
+}
+const YOUTO_FALLBACK_COLOR = '#BDBDBD'
+
+// 地理院タイル(淡色)+用途地域ポリゴンを合成した用途地域図を生成
+async function buildZoneMap(lat: number, lng: number) {
+  const features = await fetchUseAreaFeatures(lat, lng, 1)
+  if (features.length === 0) return null
+
+  const sharp = (await import('sharp')).default
+  const z = 16
+  const ct = latLngToTile(lat, lng, z)
+  const originX = (ct.x - 2) * 256
+  const originY = (ct.y - 2) * 256
+  const world = latLngToWorldPixel(lat, lng, z)
+  const cropLeft = Math.round(world.x - originX) - 512
+  const cropTop = Math.round(world.y - originY) - 512
+
+  // 背景: 地理院タイル5x5をモザイク合成して対象地中心に1024pxを切り出す
+  const tileLayers = (await Promise.all(
+    Array.from({ length: 25 }, async (_, i) => {
+      const dx = (i % 5) - 2
+      const dy = Math.floor(i / 5) - 2
+      try {
+        const res = await fetch(
+          `https://cyberjapandata.gsi.go.jp/xyz/pale/${z}/${ct.x + dx}/${ct.y + dy}.png`,
+          { cache: 'no-store', signal: AbortSignal.timeout(10000) }
+        )
+        if (!res.ok) return null
+        return { input: Buffer.from(await res.arrayBuffer()), left: (dx + 2) * 256, top: (dy + 2) * 256 }
+      } catch { return null }
+    })
+  )).filter((t): t is NonNullable<typeof t> => t !== null)
+  if (tileLayers.length === 0) return null
+
+  const mosaic = await sharp({ create: { width: 1280, height: 1280, channels: 3, background: { r: 255, g: 255, b: 255 } } })
+    .composite(tileLayers).png().toBuffer()
+  const base = await sharp(mosaic)
+    .extract({ left: cropLeft, top: cropTop, width: 1024, height: 1024 }).png().toBuffer()
+
+  // 前景: 用途地域ポリゴン(半透明)+対象地マーカーのSVG
+  const px = (plng: number, plat: number): string => {
+    const w = latLngToWorldPixel(plat, plng, z)
+    return `${(w.x - originX - cropLeft).toFixed(1)},${(w.y - originY - cropTop).toFixed(1)}`
+  }
+  const colorOf = (youtoId: number | null) => YOUTO_COLORS[youtoId ?? -1] ?? YOUTO_FALLBACK_COLOR
+  const paths = features.map(f => {
+    const d = f.polygons
+      .flatMap(rings => rings.map(ring => `M${ring.map(([plng, plat]) => px(plng, plat)).join('L')}Z`))
+      .join(' ')
+    const color = colorOf(f.youtoId)
+    // タイル境界のクリップ線が見えないよう輪郭線なし(境界は色の差で表現)
+    return `<path d="${d}" fill="${color}" fill-opacity="0.4" fill-rule="evenodd"/>`
+  }).join('')
+  const svg =
+    `<svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">` +
+    paths +
+    `<circle cx="512" cy="512" r="11" fill="#e53935" stroke="#ffffff" stroke-width="4"/>` +
+    `</svg>`
+
+  const image = await sharp(base).composite([{ input: Buffer.from(svg) }]).png().toBuffer()
+
+  // 凡例: 表示範囲内の用途地域(重複除去)。対象地の地域を先頭に
+  const subject = findContainingUseArea(lat, lng, features)
+  const seen = new Set<string>()
+  const zones = features.flatMap(f => {
+    const key = `${f.useDistrict}|${f.buildingCoverage}|${f.floorAreaRatio}`
+    if (!f.useDistrict || seen.has(key)) return []
+    seen.add(key)
+    return [{
+      name: f.useDistrict,
+      color: colorOf(f.youtoId),
+      buildingCoverage: f.buildingCoverage,
+      floorAreaRatio: f.floorAreaRatio,
+      isSubject: subject != null &&
+        f.useDistrict === subject.useDistrict &&
+        f.buildingCoverage === subject.buildingCoverage &&
+        f.floorAreaRatio === subject.floorAreaRatio,
+    }]
+  }).sort((a, b) => Number(b.isSubject) - Number(a.isSubject))
+
+  return {
+    image: `data:image/png;base64,${image.toString('base64')}`,
+    zones,
+    subjectZone: subject?.useDistrict ?? null,
+    attribution: `${REINFOLIB_ATTRIBUTION}(用途地域)・地理院タイル`,
+  }
+}
 
 function isJapanese(s: string): boolean {
   return /[　-鿿豈-﫿＀-￯]/.test(s)
@@ -140,6 +247,15 @@ export async function POST(req: Request) {
     } catch (e) {
       return NextResponse.json({ error: `Maps API 通信エラー: ${e}` }, { status: 500 })
     }
+  }
+
+  // 用途地域図: ポリゴンが取れる場合は本物の色分け図を生成、
+  // 非都市計画区域などで取れない場合は従来のGoogle地図にフォールバック
+  if (type === 'zone') {
+    try {
+      const zoneMap = await buildZoneMap(lat, lng)
+      if (zoneMap) return NextResponse.json(zoneMap)
+    } catch { /* フォールバックへ */ }
   }
 
   const zoom = type === 'zone' ? 15 : 17

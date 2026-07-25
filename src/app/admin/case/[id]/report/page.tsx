@@ -86,6 +86,10 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
   // Map images
   const [rosenkaMap, setRosenkaMap] = useState<string>('')
   const [zoneMap, setZoneMap] = useState<string>('')
+  const [zoneLegend, setZoneLegend] = useState<{
+    name: string; color: string; buildingCoverage: number | null
+    floorAreaRatio: number | null; isSubject: boolean
+  }[]>([])
   const [chikaMap, setChikaMap] = useState<string>('')
   const [chikaPoints, setChikaPoints] = useState<{
     label: string; name: string; type: string; price: number
@@ -161,7 +165,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ address, type: 'zone' }),
           }).then(r => r.json()).then(d => {
-            if (d.image) setZoneMap(d.image)
+            if (d.image) { setZoneMap(d.image); setZoneLegend(d.zones || []) }
           }).catch(() => {}),
 
           fetch(`/api/cases/${id}/fetch-cases`, {
@@ -750,7 +754,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                   ? <img src={zoneMap} alt="用途地域図プレビュー" className="w-full h-24 object-cover mb-1 border border-[#ced4da]" />
                   : <p className="text-[9px] text-[#9a9a9a] mb-1">{autoFetching ? '取得中...' : '取得できませんでした'}</p>
                 }
-                <input type="file" accept="image/*" onChange={handleImageUpload(setZoneMap)}
+                <input type="file" accept="image/*" onChange={e => { setZoneLegend([]); handleImageUpload(setZoneMap)(e) }}
                   className="w-full text-[10px] text-[#9a9a9a] file:mr-2 file:py-1 file:px-2 file:border file:border-[#ced4da] file:bg-white file:text-[#5a5a5a] file:text-[10px]" />
               </div>
               <div>
@@ -1101,13 +1105,38 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
               <div style={{ flex: 1 }}>
                 <PageHeader page={4} />
                 <SectionHead>都市計画 用途地域図</SectionHead>
-                <div style={{ width: '100%', height: '220mm', border: '1px solid #ced4da', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9f9f9' }}>
+                <div style={{ width: '100%', height: zoneLegend.length > 0 ? '150mm' : '220mm', border: '1px solid #ced4da', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f9f9f9' }}>
                   {zoneMap ? (
-                    <img src={zoneMap} alt="用途地域図" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                    <img src={zoneMap} alt="用途地域図" style={{ width: '100%', height: '100%', objectFit: zoneLegend.length > 0 ? 'cover' : 'contain' }} />
                   ) : (
                     <p style={{ fontSize: '9px', color: '#9a9a9a' }}>用途地域図をアップロードしてください</p>
                   )}
                 </div>
+                {zoneMap && zoneLegend.length > 0 && (
+                  <>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', marginTop: '8px' }}>
+                      <thead>
+                        <tr>
+                          <Th>凡例</Th><Th>用途地域</Th><Th right>建蔽率</Th><Th right>容積率</Th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {zoneLegend.map(zn => (
+                          <tr key={`${zn.name}-${zn.buildingCoverage}-${zn.floorAreaRatio}`}>
+                            <Td><span style={{ display: 'inline-block', width: '18px', height: '10px', background: zn.color, opacity: 0.6, border: `1px solid ${zn.color}`, verticalAlign: 'middle' }} /></Td>
+                            <Td>{zn.name}{zn.isSubject ? '（対象地）' : ''}</Td>
+                            <Td right>{zn.buildingCoverage != null ? `${zn.buildingCoverage}%` : '−'}</Td>
+                            <Td right>{zn.floorAreaRatio != null ? `${zn.floorAreaRatio}%` : '−'}</Td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <p style={{ fontSize: '7px', color: '#9a9a9a', marginTop: '4px' }}>
+                      ※ 赤マーカーが対象地です。
+                      出典：国土交通省 不動産情報ライブラリ（用途地域データ）を加工して作成／背景地図：国土地理院 地理院タイル
+                    </p>
+                  </>
+                )}
               </div>
               <PageFooter />
             </div>

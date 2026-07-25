@@ -92,6 +92,16 @@ export async function geocodeJa(address: string): Promise<{ lat: number; lng: nu
   return null
 }
 
+// Webメルカトルのワールドピクセル座標(タイル座標×256の実数値)
+export function latLngToWorldPixel(lat: number, lng: number, z: number): { x: number; y: number } {
+  const scale = 2 ** z * 256
+  const latRad = (lat * Math.PI) / 180
+  return {
+    x: ((lng + 180) / 360) * scale,
+    y: ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * scale,
+  }
+}
+
 export function latLngToTile(lat: number, lng: number, z: number): { x: number; y: number } {
   const n = 2 ** z
   const x = Math.floor(((lng + 180) / 360) * n)
@@ -219,36 +229,55 @@ export type UseArea = {
   floorAreaRatio: number | null   // 容積率(%)
 }
 
-// XKT002: 都市計画決定GISデータ(用途地域)から対象地点の用途地域を判定
-export async function fetchUseArea(lat: number, lng: number): Promise<UseArea | null> {
+export type UseAreaFeature = UseArea & {
+  youtoId: number | null           // 用途地域コード(1〜13)
+  polygons: number[][][][]         // MultiPolygon形式 [polygon][ring][point][lng,lat]
+}
+
+// XKT002: 用途地域ポリゴンを対象地点の周辺タイルから取得(range=0で自タイルのみ、1で3x3)
+export async function fetchUseAreaFeatures(lat: number, lng: number, range = 0): Promise<UseAreaFeature[]> {
   const z = 15
   const { x, y } = latLngToTile(lat, lng, z)
-  const res = await fetch(
-    `${BASE}/XKT002?response_format=geojson&z=${z}&x=${x}&y=${y}`,
-    { headers: apiHeaders(), signal: AbortSignal.timeout(10000) }
-  )
-  if (!res.ok) return null
-  const json = await res.json()
-  type Feature = {
-    geometry?: { type?: string; coordinates?: unknown }
-    properties?: Record<string, unknown>
+  const tiles: Promise<UseAreaFeature[]>[] = []
+  for (let dx = -range; dx <= range; dx++) for (let dy = -range; dy <= range; dy++) {
+    tiles.push((async () => {
+      try {
+        const res = await fetch(
+          `${BASE}/XKT002?response_format=geojson&z=${z}&x=${x + dx}&y=${y + dy}`,
+          { headers: apiHeaders(), signal: AbortSignal.timeout(10000) }
+        )
+        if (!res.ok) return []
+        const json = await res.json()
+        type Feature = {
+          geometry?: { type?: string; coordinates?: unknown }
+          properties?: Record<string, unknown>
+        }
+        return ((json.features ?? []) as Feature[]).flatMap((f): UseAreaFeature[] => {
+          const g = f.geometry
+          if (!g?.coordinates) return []
+          const p = f.properties ?? {}
+          const youtoId = parseInt(String(p.youto_id ?? ''), 10)
+          return [{
+            useDistrict: String(p.use_area_ja || ''),
+            buildingCoverage: parsePercent(p.u_building_coverage_ratio_ja as string),
+            floorAreaRatio: parsePercent(p.u_floor_area_ratio_ja as string),
+            youtoId: Number.isFinite(youtoId) ? youtoId : null,
+            polygons: (g.type === 'MultiPolygon' ? g.coordinates : [g.coordinates]) as number[][][][],
+          }]
+        })
+      } catch { return [] }
+    })())
   }
-  for (const f of (json.features ?? []) as Feature[]) {
-    const g = f.geometry
-    if (!g?.coordinates) continue
-    const polygons = (g.type === 'MultiPolygon'
-      ? g.coordinates
-      : [g.coordinates]) as number[][][][]
-    if (polygons.some(rings => pointInPolygon(lat, lng, rings))) {
-      const p = f.properties ?? {}
-      return {
-        useDistrict: String(p.use_area_ja || ''),
-        buildingCoverage: parsePercent(p.u_building_coverage_ratio_ja as string),
-        floorAreaRatio: parsePercent(p.u_floor_area_ratio_ja as string),
-      }
-    }
-  }
-  return null
+  return (await Promise.all(tiles)).flat()
+}
+
+export function findContainingUseArea(lat: number, lng: number, features: UseAreaFeature[]): UseAreaFeature | null {
+  return features.find(f => f.polygons.some(rings => pointInPolygon(lat, lng, rings))) ?? null
+}
+
+// 対象地点の用途地域を判定
+export async function fetchUseArea(lat: number, lng: number): Promise<UseArea | null> {
+  return findContainingUseArea(lat, lng, await fetchUseAreaFeatures(lat, lng))
 }
 
 export type NearestStation = {
