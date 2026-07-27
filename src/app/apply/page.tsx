@@ -106,12 +106,15 @@ export default function ApplyPage() {
               <label className="label-nendo">物件住所</label>
               <input
                 type="text"
-                placeholder="東京都〇〇区〇〇1-2-3"
+                placeholder="東京都〇〇区〇〇1-2-3（マンションは 〇〇マンション101号室 まで）"
                 value={form.property_address}
                 onChange={(e) => setForm({ ...form, property_address: e.target.value })}
                 required
                 className="w-full border border-[#ced4da] rounded px-3 py-2 text-sm text-[#495057] focus:outline-none focus:border-[#5a5757] transition-colors"
               />
+              <p className={`text-xs ${form.property_type === 'mansion' ? 'text-[#c0392b]' : 'text-[#9a9a9a]'}`}>
+                ※ マンションの場合は、建物名・部屋番号までご入力ください（例: 〇〇マンション101号室）
+              </p>
             </div>
 
             <div className="space-y-1.5">
