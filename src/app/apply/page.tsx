@@ -115,6 +115,10 @@ export default function ApplyPage() {
               <p className={`text-xs ${form.property_type === 'mansion' ? 'text-[#c0392b]' : 'text-[#9a9a9a]'}`}>
                 ※ マンションの場合は、建物名・部屋番号までご入力ください（例: 〇〇マンション101号室）
               </p>
+              <p className="text-xs text-[#9a9a9a]">
+                ※ あわせて「地番」もご記載ください（例: 〇〇1-2-3　地番: 12番3）。地番は住所とは異なる番号で、
+                毎年お手元に届く固定資産税の納税通知書に記載されています。地番のご記載があると登記情報の取得がスムーズに進みます。
+              </p>
             </div>
 
             <div className="space-y-1.5">
