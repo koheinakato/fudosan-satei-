@@ -13,6 +13,16 @@ const COMPANY = {
 
 const formatNum = (v: number) => new Intl.NumberFormat('ja-JP').format(Math.round(v || 0))
 
+// 登記の建物構造から法定耐用年数と再調達原価の目安を導出(AI推定はしない)
+const buildingParamsFromStructure = (structure: string): { usefulLife: number; newPrice: number } | null => {
+  if (/ＳＲＣ|SRC|鉄骨鉄筋/.test(structure)) return { usefulLife: 47, newPrice: 240000 }
+  if (/ＲＣ|RC|鉄筋コンクリート|コンクリート/.test(structure)) return { usefulLife: 47, newPrice: 220000 }
+  if (/軽量鉄骨/.test(structure)) return { usefulLife: 27, newPrice: 170000 }
+  if (/鉄骨|Ｓ造/.test(structure)) return { usefulLife: 34, newPrice: 190000 }
+  if (/木造|Ｗ造/.test(structure)) return { usefulLife: 22, newPrice: 160000 }
+  return null
+}
+
 type CaseItem = { id: number; name: string; price: number; timeCorrect: number; areaCorrect: number }
 
 const defaultCases: CaseItem[] = [
@@ -61,8 +71,9 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
   })
 
   // Building
+  // 建物情報は登記PDF由来のみ。登記未取得の間は空欄(0)のままにして誤情報を出さない
   const [building, setBuilding] = useState({
-    structure: '', floorArea: 0, age: 0, usefulLife: 22, newPrice: 200000,
+    structure: '', floorArea: 0, age: 0, usefulLife: 0, newPrice: 0,
   })
 
   // Mansion-specific
@@ -118,7 +129,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
               if (!parsed.error) {
                 if (parsed.address) setInfo(prev => ({ ...prev, address: parsed.address || prev.address, jyukyoHyoji: parsed.jyukyoHyoji || prev.jyukyoHyoji, chiban: parsed.chiban || prev.chiban, kaheiNumber: parsed.kaheiNumber || prev.kaheiNumber, propertyName: parsed.propertyName || prev.propertyName }))
                 if (parsed.landArea) setLand(prev => ({ ...prev, totalArea: parsed.landArea }))
-                if (parsed.floorArea) setBuilding(prev => ({ ...prev, floorArea: parsed.floorArea, structure: parsed.structure || prev.structure, age: parsed.builtYear ? new Date().getFullYear() - parsed.builtYear : prev.age }))
+                if (parsed.floorArea) setBuilding(prev => ({ ...prev, floorArea: parsed.floorArea, structure: parsed.structure || prev.structure, age: parsed.builtYear ? new Date().getFullYear() - parsed.builtYear : prev.age, ...(buildingParamsFromStructure(parsed.structure || prev.structure) ?? {}) }))
                 if (parsed.mansionFloor) setMansion(prev => ({ ...prev, floor: parsed.mansionFloor }))
                 if (parsed.mansionTotalFloors) setMansion(prev => ({ ...prev, totalFloors: parsed.mansionTotalFloors }))
               }
@@ -194,14 +205,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
             body: JSON.stringify({ address, propertyType: c.property_type }),
           }).then(r => r.json()).then(d => {
             if (!d.error) {
-              setBuilding(prev => ({
-                ...prev,
-                structure: prev.structure || d.structure || '',
-                floorArea: prev.floorArea || d.floorArea || 0,
-                age: prev.age || d.age || 0,
-                usefulLife: d.usefulLife || prev.usefulLife,
-                newPrice: d.newPrice || prev.newPrice,
-              }))
+              // 建物概要はAIで埋めない(登記PDF由来のみ)。収益還元(参考)のみ自動入力
               setIncome(prev => ({
                 monthlyRent: prev.monthlyRent || d.monthlyRent || 0,
                 vacancyRate: d.vacancyRate || prev.vacancyRate,
@@ -372,7 +376,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
 
       if (parsed.address) setInfo(prev => ({ ...prev, address: parsed.address, jyukyoHyoji: parsed.jyukyoHyoji || prev.jyukyoHyoji, chiban: parsed.chiban || prev.chiban, kaheiNumber: parsed.kaheiNumber || prev.kaheiNumber, propertyName: parsed.propertyName || prev.propertyName }))
       if (parsed.landArea) setLand(prev => ({ ...prev, totalArea: parsed.landArea }))
-      if (parsed.floorArea) setBuilding(prev => ({ ...prev, floorArea: parsed.floorArea, structure: parsed.structure || prev.structure, age: parsed.builtYear ? new Date().getFullYear() - parsed.builtYear : prev.age }))
+      if (parsed.floorArea) setBuilding(prev => ({ ...prev, floorArea: parsed.floorArea, structure: parsed.structure || prev.structure, age: parsed.builtYear ? new Date().getFullYear() - parsed.builtYear : prev.age, ...(buildingParamsFromStructure(parsed.structure || prev.structure) ?? {}) }))
       if (parsed.mansionFloor) setMansion(prev => ({ ...prev, floor: parsed.mansionFloor }))
       if (parsed.mansionTotalFloors) setMansion(prev => ({ ...prev, totalFloors: parsed.mansionTotalFloors }))
       setMessage('登記情報を自動入力しました')
@@ -967,27 +971,27 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                       <tbody>
                         <tr>
                           <TdHead>所在階 / 総階数</TdHead>
-                          <Td>{mansion.floor}階 / {mansion.totalFloors}階建</Td>
+                          <Td>{mansion.floor || mansion.totalFloors ? `${mansion.floor}階 / ${mansion.totalFloors}階建` : '—'}</Td>
                           <TdHead>向き</TdHead>
                           <Td>{mansion.direction || '—'}</Td>
                         </tr>
                         <tr>
                           <TdHead>専有面積</TdHead>
-                          <Td bold>{building.floorArea.toFixed(2)} ㎡</Td>
+                          <Td bold>{building.floorArea ? `${building.floorArea.toFixed(2)} ㎡` : '—'}</Td>
                           <TdHead>交通機関</TdHead>
                           <Td>{land.railway} {land.station.replace(/駅$/, '')}駅 徒歩{land.walkTime}分</Td>
                         </tr>
                         <tr>
                           <TdHead>構造</TdHead>
-                          <Td>{building.structure || '—'}（築{building.age}年・耐用{building.usefulLife}年）</Td>
+                          <Td>{building.structure ? `${building.structure}（築${building.age}年・耐用${building.usefulLife}年）` : '—'}</Td>
                           <TdHead>権利</TdHead>
                           <Td>{land.rights || '区分所有'}</Td>
                         </tr>
                         <tr>
                           <TdHead>管理費</TdHead>
-                          <Td>{formatNum(mansion.managementFee)} 円/月</Td>
+                          <Td>{mansion.managementFee ? `${formatNum(mansion.managementFee)} 円/月` : '—'}</Td>
                           <TdHead>修繕積立金</TdHead>
-                          <Td>{formatNum(mansion.repairFund)} 円/月</Td>
+                          <Td>{mansion.repairFund ? `${formatNum(mansion.repairFund)} 円/月` : '—'}</Td>
                         </tr>
                         <tr>
                           <TdHead>流通・市場性</TdHead>
@@ -1042,8 +1046,8 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                         <tr>
                           <Td>居宅</Td>
                           <Td>{building.structure || '—'}</Td>
-                          <Td right bold>{building.floorArea.toFixed(2)} ㎡</Td>
-                          <Td right>築 {building.age} 年（耐用 {building.usefulLife}年）</Td>
+                          <Td right bold>{building.floorArea ? `${building.floorArea.toFixed(2)} ㎡` : '—'}</Td>
+                          <Td right>{building.floorArea ? `築 ${building.age} 年（耐用 ${building.usefulLife}年）` : '—'}</Td>
                         </tr>
                       </tbody>
                     </table>
@@ -1108,12 +1112,12 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                     </thead>
                     <tbody>
                       <tr>
-                        <Td>{formatNum(building.newPrice)} 円/㎡</Td>
-                        <Td right>{building.usefulLife} 年</Td>
-                        <Td right>{building.usefulLife - building.age}年 / {building.age}年</Td>
-                        <Td right>{building.floorArea.toFixed(2)} ㎡</Td>
+                        <Td>{building.newPrice ? `${formatNum(building.newPrice)} 円/㎡` : '—'}</Td>
+                        <Td right>{building.usefulLife ? `${building.usefulLife} 年` : '—'}</Td>
+                        <Td right>{building.usefulLife ? `${building.usefulLife - building.age}年 / ${building.age}年` : '—'}</Td>
+                        <Td right>{building.floorArea ? `${building.floorArea.toFixed(2)} ㎡` : '—'}</Td>
                         <Td right>{obsCorr.toFixed(2)} 倍</Td>
-                        <Td right bold>{formatNum(buildingEval.total)} 円</Td>
+                        <Td right bold>{building.floorArea && building.newPrice ? `${formatNum(buildingEval.total)} 円` : '—'}</Td>
                       </tr>
                     </tbody>
                   </table>

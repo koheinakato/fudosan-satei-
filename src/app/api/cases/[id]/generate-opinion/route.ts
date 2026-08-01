@@ -81,11 +81,11 @@ ${data.cases.map((c: { name?: string; price?: number }) => `- ${c.name}: ${Numbe
   const propertySection = isMansion ? `
 【マンション概要】
 - 所在地: ${data.address || '未設定'}
-- 専有面積: ${data.floorArea || 0}㎡
-- 所在階 / 総階数: ${data.mansionFloor || 0}階 / ${data.mansionTotalFloors || 0}階建
-- 向き: ${data.mansionDirection || '未設定'}
-- 構造: ${data.structure || '未設定'}
-- 築年数: ${data.age || 0}年（法定耐用年数 ${data.usefulLife || 47}年）
+- 専有面積: ${data.floorArea ? `${data.floorArea}㎡` : '不明'}
+- 所在階 / 総階数: ${data.mansionFloor ? `${data.mansionFloor}階 / ${data.mansionTotalFloors || '?'}階建` : '不明'}
+- 向き: ${data.mansionDirection || '不明'}
+- 構造: ${data.structure || '不明'}
+- 築年数: ${data.age ? `${data.age}年（法定耐用年数 ${data.usefulLife || 47}年）` : '不明'}
 - 管理費: ${data.mansionManagementFee || 0}円/月、修繕積立金: ${data.mansionRepairFund || 0}円/月
 - 最寄駅: ${data.railway || ''} ${data.station || ''}駅 徒歩${data.walkTime || 0}分` : `
 【土地の概要】
@@ -95,9 +95,9 @@ ${data.cases.map((c: { name?: string; price?: number }) => `- ${c.name}: ${Numbe
 - 土地形状: ${data.shape || '未設定'}
 
 【建物の概要】
-- 構造: ${data.structure || '未設定'}
-- 延床面積: ${data.floorArea || 0}㎡
-- 築年数: ${data.age || 0}年（法定耐用年数 ${data.usefulLife || 22}年）`
+- 構造: ${data.structure || '不明'}
+- 延床面積: ${data.floorArea ? `${data.floorArea}㎡` : '不明'}
+- 築年数: ${data.age ? `${data.age}年（法定耐用年数 ${data.usefulLife || 22}年）` : '不明'}`
 
   const evalSection = isMansion ? `
 【査定評価額】
@@ -124,6 +124,7 @@ ${casesSection}
 
 実データ（地価水準・地価動向・駅利用状況・将来人口など）が提示されている場合は、その中から査定額の根拠づけに有効な要点を選んで所見に自然に織り込んでください。
 提示されたデータにない具体的な数値・事実を創作しないでください。
+「不明」となっている項目には一切言及せず、判明している情報のみで所見を構成してください。
 総合所見のみを出力してください。見出し・番号・箇条書き不要。`
 
   const message = await client.messages.create({
