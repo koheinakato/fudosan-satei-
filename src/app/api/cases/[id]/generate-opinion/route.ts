@@ -101,13 +101,13 @@ ${data.cases.map((c: { name?: string; price?: number }) => `- ${c.name}: ${Numbe
 
   const evalSection = isMansion ? `
 【査定評価額】
-- 総合査定額: ${data.evaluationTotal || 0}円
-- 事例比較評価額: ${data.caseEvalTotal || 0}円（比重 ${data.weightLand || 0}%）
-- 建物評価額: ${data.buildingTotal || 0}円（比重 ${data.weightBuilding || 0}%）` : `
+- 総合査定額: ${data.evaluationTotal || 0}円（取引事例比較法を主たる手法とする）
+- 事例比較評価額: ${data.caseEvalTotal || 0}円
+- 建物積算評価額（検算・参考）: ${data.buildingTotal || 0}円（構造別・経年掛け率 ${data.buildingRatePct || 0}%）` : `
 【査定評価額】
-- 総合査定額: ${data.evaluationTotal || 0}円
-- 土地評価額: ${data.caseEvalTotal || 0}円（比重 ${data.weightLand || 0}%）
-- 建物評価額: ${data.buildingTotal || 0}円（比重 ${data.weightBuilding || 0}%）`
+- 総合査定額: ${data.evaluationTotal || 0}円（土地評価＋建物評価の合算）
+- 土地評価額: ${data.caseEvalTotal || 0}円（取引事例比較法）
+- 建物評価額: ${data.buildingTotal || 0}円（構造別・経年掛け率 ${data.buildingRatePct || 0}%、修繕履歴${data.renovationCount || 0}件を反映）`
 
   const prompt = `以下の不動産データをもとに、プロの不動産コンサルタントによる「総合所見」を日本語で作成してください。
 400〜500文字程度、段落なし・一文で書き始め、専門的かつ信頼感のある文体にしてください。

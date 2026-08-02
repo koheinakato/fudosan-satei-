@@ -4,7 +4,7 @@ import { stripe } from '@/lib/stripe'
 
 export async function POST(req: Request) {
   const body = await req.json()
-  const { customer_name, customer_email, customer_phone, property_address, property_type, assessment_purpose } = body
+  const { customer_name, customer_email, customer_phone, property_address, property_type, assessment_purpose, renovations } = body
 
   if (!customer_name || !customer_email || !customer_phone || !property_address || !property_type || !assessment_purpose) {
     return NextResponse.json({ error: '必須項目が不足しています' }, { status: 400 })
@@ -41,6 +41,20 @@ export async function POST(req: Request) {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
+  // 修繕・リフォーム履歴(任意入力)をストレージに保存し、受付を履歴に記録
+  const { CASE_DATA_BUCKET, appendCaseEvent } = await import('@/lib/caseEvents')
+  const renovationKeys: string[] = Array.isArray(renovations) ? renovations.filter(r => typeof r === 'string') : []
+  if (renovationKeys.length > 0) {
+    await supabaseAdmin.storage.createBucket(CASE_DATA_BUCKET, { public: false }).then(() => {}, () => {})
+    await supabaseAdmin.storage
+      .from(CASE_DATA_BUCKET)
+      .upload(`${data.id}/renovations.json`, JSON.stringify(renovationKeys), {
+        contentType: 'application/json', upsert: true,
+      })
+      .then(() => {}, () => {})
+  }
+  await appendCaseEvent(data.id, 'apply', `査定依頼を受付（修繕履歴 ${renovationKeys.length}件記載）`)
 
   if (process.env.RESEND_API_KEY) {
     const PROPERTY_TYPE_LABELS: Record<string, string> = { house: '戸建て', mansion: 'マンション', land: '土地' }

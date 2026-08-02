@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { Case } from '@/types/database'
+import { RENOVATION_ITEMS, structureClassOf, buildingRate } from '@/lib/buildingValuation'
 
 const COMPANY = {
   name: 'ぷらたなすきかく株式会社',
@@ -88,9 +89,8 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
   const [obsCorr, setObsCorr] = useState(1.00)
 
   // Weights
-  const [weights, setWeights] = useState({ land: 50, building: 50 })
-  const [weightReason, setWeightReason] = useState('')
-  const weightsAutoSet = useRef(false)
+  // 修繕・リフォーム履歴(申込時の顧客入力を初期値に、管理側で修正可)
+  const [renovations, setRenovations] = useState<string[]>([])
 
   // Map images
   const [rosenkaMap, setRosenkaMap] = useState<string>('')
@@ -157,6 +157,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
       .then(async d => {
         const c: Case = d.case
         setCaseData(c)
+        if (Array.isArray(d.renovations)) setRenovations(d.renovations)
         const address = c.property_address || ''
         const isMansionProperty = c.property_type === 'mansion'
         setInfo(prev => ({ ...prev, address, clientName: c.customer_name ? `${c.customer_name} 様` : '' }))
@@ -242,10 +243,14 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
     return { cases: calced, average: avg, total: avg * individualCorr * validLandArea }
   })()
 
+  // 建物評価: 建物価値評価基準(構造別・経年掛け率+修繕履歴加算)による
+  const structClass = structureClassOf(building.structure)
   const buildingEval = (() => {
-    let r = (building.usefulLife - building.age) / (building.usefulLife || 1)
-    if (r < 0.1) r = 0.1
-    return { remainRatio: r, total: building.floorArea * building.newPrice * r * obsCorr }
+    if (!building.floorArea || !building.newPrice || !structClass) {
+      return { base: 0, added: 0, rate: 0, total: 0 }
+    }
+    const { base, added, rate } = buildingRate(structClass, building.age, renovations)
+    return { base, added, rate, total: building.floorArea * building.newPrice * (rate / 100) * obsCorr }
   })()
 
   const isMansion = caseData?.property_type === 'mansion'
@@ -253,36 +258,9 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
     ? landEval.average * individualCorr * building.floorArea
     : landEval.total
 
-  const totalEval =
-    caseEvalTotal * (weights.land / 100) +
-    buildingEval.total * (weights.building / 100)
-
-  const weightSum = weights.land + weights.building
-
-  // 登記情報から査定ウェイトを自動調整(築古ほど建物比重を下げる)。手動変更後は上書きしない
-  useEffect(() => {
-    if (!caseData || weightsAutoSet.current) return
-    if (caseData.property_type === 'land') {
-      weightsAutoSet.current = true
-      setWeights({ land: 100, building: 0 })
-      setWeightReason('物件種別が土地(建物なし)のため、土地100%としています。')
-      return
-    }
-    if (!building.usefulLife || !building.floorArea) return
-    weightsAutoSet.current = true
-    // 残存耐用年数の割合(0.1〜1.0)に応じて建物比重を配分
-    const remainRatio = Math.max((building.usefulLife - building.age) / building.usefulLife, 0.1)
-    const base = caseData.property_type === 'mansion' ? 20 : 40 // マンションは事例比較が主
-    const bw = Math.max(5, Math.round((base * remainRatio) / 5) * 5)
-    setWeights({ land: 100 - bw, building: bw })
-    const mainLabel = caseData.property_type === 'mansion' ? '事例' : '土地'
-    setWeightReason(
-      `登記情報より自動設定: ${building.structure || '構造不明'}・築${building.age}年 → ` +
-      `残存耐用年数 ${building.usefulLife - building.age}/${building.usefulLife}年(${Math.round(remainRatio * 100)}%)。` +
-      `${caseData.property_type === 'mansion' ? 'マンションは事例比較を主とするため建物の基準値20%' : '戸建ての建物基準値40%'}×残存率 → ` +
-      `建物${bw}%・${mainLabel}${100 - bw}%`
-    )
-  }, [caseData, building])
+  // 総合査定額: 戸建て・土地=土地評価+建物評価の合算。
+  // 区分マンションは取引事例比較法を主とし、建物積算は検算用(合算しない)
+  const totalEval = isMansion ? caseEvalTotal : caseEvalTotal + buildingEval.total
 
   // Chart
   useEffect(() => {
@@ -434,8 +412,8 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
           evaluationTotal: totalEval,
           caseEvalTotal,
           buildingTotal: buildingEval.total,
-          weightLand: weights.land,
-          weightBuilding: weights.building,
+          buildingRatePct: buildingEval.rate,
+          renovationCount: renovations.length,
           cases: casesSource === 'reinfolib' ? cases.map(c => ({ name: c.name, price: c.price })) : [],
         }),
       })
@@ -520,7 +498,6 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
   }
 
   const generatePDF = async () => {
-    if (weightSum !== 100) { setMessage(`ウェイト合計が${weightSum}%です。100%にしてください。`); return }
     setPdfLoading(true)
     setMessage('PDF生成中...')
     try {
@@ -536,7 +513,6 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
   }
 
   const sendReport = async () => {
-    if (weightSum !== 100) { setMessage(`ウェイト合計が${weightSum}%です。100%にしてください。`); return }
     const email = caseData?.customer_email
     const name = caseData?.customer_name
     if (!email) { setMessage('顧客のメールアドレスが登録されていません'); return }
@@ -812,23 +788,35 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
             </div>
           </section>
 
-          {/* ウェイト */}
-          <section>
-            <h2 className="text-xs font-medium text-[#5a5a5a] mb-2 uppercase tracking-widest">査定ウェイト</h2>
-            <p className="text-[9px] text-[#9a9a9a] mb-2">
-              {weightReason || '※ 登記の建物情報が読み込まれると築年数から自動調整されます（手動修正可）'}
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {(['land', 'building'] as const).map((k, i) => (
-                <div key={k}>
-                  <label className="block text-[10px] text-[#9a9a9a] mb-0.5">{[isMansion ? '事例 (%)' : '土地 (%)', '建物 (%)'][i]}</label>
-                  <input type="number" value={weights[k]} onChange={e => setWeights(prev => ({ ...prev, [k]: parseInt(e.target.value) || 0 }))}
-                    className="w-full border border-[#ced4da] rounded px-2 py-1 text-xs text-center text-[#5a5a5a] focus:outline-none focus:border-[#5a5a5a]" />
-                </div>
-              ))}
-            </div>
-            <p className={`text-[10px] mt-1 ${weightSum === 100 ? 'text-[#9a9a9a]' : 'text-red-500'}`}>合計: {weightSum}% {weightSum !== 100 && '← 100%にしてください'}</p>
-          </section>
+          {/* 修繕・リフォーム履歴(建物評価の加算) */}
+          {caseData?.property_type !== 'land' && (
+            <section>
+              <h2 className="text-xs font-medium text-[#5a5a5a] mb-1 uppercase tracking-widest">修繕・リフォーム履歴</h2>
+              <p className="text-[9px] text-[#9a9a9a] mb-2">
+                ※ 申込時のお客様入力を初期値に表示。建物評価の掛け率に加算されます（同一部位は高い方のみ採用・上限+20pt・築15年未満は1/2）
+              </p>
+              <div className="space-y-1">
+                {RENOVATION_ITEMS.map(item => (
+                  <label key={item.key} className="flex items-start gap-1.5 text-[10px] text-[#5a5a5a] cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={renovations.includes(item.key)}
+                      onChange={() => setRenovations(prev =>
+                        prev.includes(item.key) ? prev.filter(k => k !== item.key) : [...prev, item.key])}
+                      className="mt-0.5 accent-[#5a5a5a]"
+                    />
+                    <span>{item.label}（+{item.points}pt）</span>
+                  </label>
+                ))}
+              </div>
+              {structClass && building.floorArea > 0 && (
+                <p className="text-[10px] text-[#5a5a5a] mt-2">
+                  掛け率: ベース{buildingEval.base}%（{structClass}・築{building.age}年）
+                  {buildingEval.added > 0 && ` + 修繕加算${buildingEval.added}pt`} = <strong>{buildingEval.rate}%</strong>
+                </p>
+              )}
+            </section>
+          )}
 
           {/* 地図画像 */}
           <section>
@@ -937,8 +925,8 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                   <p style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: '#9a9a9a', marginBottom: '6px' }}>査定算出 総合評価額</p>
                   <p style={{ fontSize: '28px', fontWeight: '700', color: '#1a1a1a', fontFamily: '"Noto Serif JP", serif' }}>{formatNum(totalEval)} <span style={{ fontSize: '12px', fontWeight: '400', color: '#5a5a5a' }}>円</span></p>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #ced4da' }}>
-                    <div style={{ fontSize: '9px', color: '#9a9a9a' }}>{isMansion ? '事例評価' : '土地評価'} ({weights.land}%)<br /><span style={{ color: '#1a1a1a', fontWeight: '600', fontSize: '10px' }}>{formatNum(caseEvalTotal)}円</span></div>
-                    <div style={{ fontSize: '9px', color: '#9a9a9a' }}>建物評価 ({weights.building}%)<br /><span style={{ color: '#1a1a1a', fontWeight: '600', fontSize: '10px' }}>{formatNum(buildingEval.total)}円</span></div>
+                    <div style={{ fontSize: '9px', color: '#9a9a9a' }}>{isMansion ? '事例比較評価（主たる手法）' : '土地評価'}<br /><span style={{ color: '#1a1a1a', fontWeight: '600', fontSize: '10px' }}>{formatNum(caseEvalTotal)}円</span></div>
+                    <div style={{ fontSize: '9px', color: '#9a9a9a' }}>{isMansion ? '建物積算評価（検算・参考）' : '建物評価'}<br /><span style={{ color: '#1a1a1a', fontWeight: '600', fontSize: '10px' }}>{formatNum(buildingEval.total)}円</span></div>
                   </div>
                 </div>
 
@@ -1099,24 +1087,32 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
 
                 {/* 建物査定表 */}
                 <div style={{ marginBottom: '14px' }}>
-                  <SectionHead>建物の査定表（積算評価）</SectionHead>
+                  <SectionHead>建物の査定表（構造別・経年掛け率法{isMansion ? '／検算用' : ''}）</SectionHead>
                   <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                     <thead>
                       <tr>
-                        <Th>再調達原価</Th><Th right>耐用年数</Th><Th right>残存/経過</Th><Th right>延床面積</Th><Th right>観察補正</Th><Th right>建物評価額</Th>
+                        <Th>構造区分</Th><Th right>築年数</Th><Th>再調達原価</Th><Th right>延床面積</Th><Th right>掛け率</Th><Th right>観察補正</Th><Th right>建物評価額</Th>
                       </tr>
                     </thead>
                     <tbody>
                       <tr>
+                        <Td>{structClass ?? '—'}</Td>
+                        <Td right>{structClass ? `築 ${building.age} 年` : '—'}</Td>
                         <Td>{building.newPrice ? `${formatNum(building.newPrice)} 円/㎡` : '—'}</Td>
-                        <Td right>{building.usefulLife ? `${building.usefulLife} 年` : '—'}</Td>
-                        <Td right>{building.usefulLife ? `${building.usefulLife - building.age}年 / ${building.age}年` : '—'}</Td>
                         <Td right>{building.floorArea ? `${building.floorArea.toFixed(2)} ㎡` : '—'}</Td>
+                        <Td right bold>{buildingEval.rate ? `${buildingEval.rate}%` : '—'}</Td>
                         <Td right>{obsCorr.toFixed(2)} 倍</Td>
-                        <Td right bold>{building.floorArea && building.newPrice ? `${formatNum(buildingEval.total)} 円` : '—'}</Td>
+                        <Td right bold>{buildingEval.total ? `${formatNum(buildingEval.total)} 円` : '—'}</Td>
                       </tr>
                     </tbody>
                   </table>
+                  {buildingEval.rate > 0 && (
+                    <p style={{ fontSize: '7px', color: '#9a9a9a', marginTop: '2px' }}>
+                      ※ 建物価値評価基準（構造別・経年掛け率表）による。ベース掛け率{buildingEval.base}%
+                      {buildingEval.added > 0 ? `＋修繕・リフォーム履歴による加算${buildingEval.added}pt` : ''}
+                      {isMansion ? '。区分マンションは取引事例比較法を主たる手法とし、本表は検算用。' : ''}
+                    </p>
+                  )}
                 </div>
 
                 {/* 地価推移グラフ */}

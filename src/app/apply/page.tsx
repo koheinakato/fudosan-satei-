@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { RENOVATION_ITEMS } from '@/lib/buildingValuation'
 
 export default function ApplyPage() {
   const router = useRouter()
@@ -15,6 +16,11 @@ export default function ApplyPage() {
     property_type: '',
     assessment_purpose: '',
   })
+  const [renovations, setRenovations] = useState<string[]>([])
+
+  const toggleRenovation = (key: string) => {
+    setRenovations(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -24,7 +30,7 @@ export default function ApplyPage() {
     const res = await fetch('/api/cases', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify({ ...form, renovations }),
     })
 
     const data = await res.json()
@@ -135,6 +141,29 @@ export default function ApplyPage() {
                 <option value="land">土地</option>
               </select>
             </div>
+
+            {/* 修繕・リフォーム履歴(任意) — 戸建て・マンションのみ */}
+            {['house', 'mansion'].includes(form.property_type) && (
+              <div className="space-y-2 border border-[#ced4da] rounded p-4 bg-[#fafafa]">
+                <p className="label-nendo">修繕・リフォーム履歴（任意）</p>
+                <p className="text-xs text-[#9a9a9a]">
+                  該当するものがあればチェックしてください。<strong className="text-[#5a5a5a]">ご記載は必須ではありませんが、記載いただくと査定の精度が上がります。</strong>
+                </p>
+                <div className="space-y-1.5 pt-1">
+                  {RENOVATION_ITEMS.map(item => (
+                    <label key={item.key} className="flex items-start gap-2 text-sm text-[#495057] cursor-pointer hover:bg-white rounded px-1 py-0.5">
+                      <input
+                        type="checkbox"
+                        checked={renovations.includes(item.key)}
+                        onChange={() => toggleRenovation(item.key)}
+                        className="mt-1 accent-[#5a5a5a]"
+                      />
+                      <span>{item.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="space-y-1.5">
               <label className="label-nendo">査定目的</label>
