@@ -107,9 +107,20 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
 
   // Load case + auto-fetch everything
   useEffect(() => {
-    // 1. 登記データをlocalStorageから引き継ぎ
+    // 1. 登記データを読み込み(localStorage優先、なければサーバーから)
+    ;(async () => {
     try {
-      const stored = localStorage.getItem(`registry_${id}`)
+      let stored = localStorage.getItem(`registry_${id}`)
+      if (!stored) {
+        try {
+          const res = await fetch(`/api/cases/${id}/registry`)
+          const d = await res.json()
+          if (d.exists && d.signedUrl) {
+            stored = await (await fetch(d.signedUrl)).text()
+            try { localStorage.setItem(`registry_${id}`, stored) } catch { /* 容量超過は無視 */ }
+          }
+        } catch { /* ignore */ }
+      }
       if (stored) {
         const data = JSON.parse(stored)
         if (data.images?.length > 0) setRegistryImages(data.images)
@@ -133,6 +144,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
         }
       }
     } catch { /* ignore */ }
+    })()
 
     // 2. 案件データ読み込み → AI自動取得
     fetch(`/api/cases/${id}`)

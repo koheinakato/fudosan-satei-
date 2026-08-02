@@ -67,6 +67,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     await supabaseAdmin.from('cases')
       .update({ status: 'completed', report_url: `${BUCKET}/${id}.pdf` })
       .eq('id', id)
+    const { appendCaseEvent } = await import('@/lib/caseEvents')
+    await appendCaseEvent(id, 'send', `査定書PDFを ${c.customer_email} へ送付`)
     return NextResponse.json({ ok: true, to: c.customer_email })
   }
 

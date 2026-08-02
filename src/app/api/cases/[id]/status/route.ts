@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { appendCaseEvent } from '@/lib/caseEvents'
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -18,6 +19,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
+
+  await appendCaseEvent(id, 'status', `ステータスを「${status}」に変更`)
 
   if (status === 'completed' && process.env.RESEND_API_KEY) {
     const { Resend } = await import('resend')

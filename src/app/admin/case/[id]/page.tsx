@@ -31,6 +31,86 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
   const [buildingFileName, setBuildingFileName] = useState('')
   const landPdfInputRef = useRef<HTMLInputElement>(null)
   const buildingPdfInputRef = useRef<HTMLInputElement>(null)
+  const [registry, setRegistry] = useState<{
+    texts?: Record<string, string>
+    landImages?: string[]
+    buildingImages?: string[]
+  }>({})
+  const [events, setEvents] = useState<{ at: string; type: string; label: string }[]>([])
+
+  const loadEvents = () => {
+    fetch(`/api/cases/${id}/events`).then(r => r.json())
+      .then(d => setEvents(d.events || [])).catch(() => {})
+  }
+
+  // localStorageの登記データをサーバー(Supabase Storage)へ保存し、履歴を記録
+  const syncRegistryToServer = async (label: string) => {
+    try {
+      const raw = localStorage.getItem(`registry_${id}`)
+      if (!raw) return
+      const initRes = await fetch(`/api/cases/${id}/registry`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'upload-url' }),
+      })
+      const init = await initRes.json()
+      if (init.error) throw new Error(init.error)
+      const up = await fetch(init.signedUrl, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: raw,
+      })
+      if (!up.ok) throw new Error(`アップロード失敗 (${up.status})`)
+      await fetch(`/api/cases/${id}/registry`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'commit', label }),
+      })
+      setRegistry(JSON.parse(raw))
+      loadEvents()
+    } catch (e) {
+      setMessage(`登記データのサーバー保存に失敗: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
+
+  // 登記データの読み込み: サーバー優先、なければlocalStorageから移行
+  useEffect(() => {
+    ;(async () => {
+      try {
+        const res = await fetch(`/api/cases/${id}/registry`)
+        const d = await res.json()
+        if (d.exists && d.signedUrl) {
+          const data = await (await fetch(d.signedUrl)).json()
+          setRegistry(data)
+          // レポートページ用にlocalStorageへも反映
+          try { localStorage.setItem(`registry_${id}`, JSON.stringify(data)) } catch { /* 容量超過は無視 */ }
+        } else {
+          const raw = localStorage.getItem(`registry_${id}`)
+          if (raw) {
+            setRegistry(JSON.parse(raw))
+            await syncRegistryToServer('既存の登記データをサーバーへ保存')
+          }
+        }
+      } catch { /* ignore */ }
+    })()
+    loadEvents()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
+
+  // 土地・建物の登記データを個別に削除
+  const clearRegistry = async (target: 'land' | 'building') => {
+    const labelJa = target === 'land' ? '土地' : '建物'
+    if (!confirm(`${labelJa}登記データを削除します。よろしいですか？`)) return
+    try {
+      const existing = JSON.parse(localStorage.getItem(`registry_${id}`) || '{"texts":{},"images":[]}')
+      existing.texts = existing.texts || {}
+      delete existing.texts[target]
+      if (target === 'land') existing.landImages = []
+      else existing.buildingImages = []
+      existing.images = [...(existing.landImages || []), ...(existing.buildingImages || [])]
+      localStorage.setItem(`registry_${id}`, JSON.stringify(existing))
+      await syncRegistryToServer(`${labelJa}登記データを削除`)
+      setMessage(`${labelJa}登記データを削除しました`)
+    } catch (e) {
+      setMessage(`削除に失敗しました: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }
 
   useEffect(() => {
     fetch(`/api/cases/${id}`)
@@ -89,6 +169,7 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
       } catch (e) {
         setMessage(prev => prev + `（引き継ぎ失敗: ${e instanceof Error ? e.message : 'ストレージ容量不足'}）`)
       }
+      await syncRegistryToServer(`土地登記PDFをアップロード（${files.length}件）`)
       const res = await fetch(`/api/cases/${id}/parse-parcels`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -129,6 +210,7 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
       } catch (e) {
         setMessage(prev => prev + `（引き継ぎ失敗: ${e instanceof Error ? e.message : 'ストレージ容量不足'}）`)
       }
+      await syncRegistryToServer('建物登記PDFをアップロード')
 
       const res = await fetch(`/api/cases/${id}/parse-parcels`, {
         method: 'POST',
@@ -197,6 +279,7 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
       const d = await res.json()
       setCaseData(d.case)
       setMessage('ステータスを更新しました')
+      loadEvents()
     }
   }
 
@@ -246,6 +329,56 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
               </>
             )}
             <Row label="受付日" value={new Date(caseData.created_at).toLocaleString('ja-JP')} />
+          </CardContent>
+        </Card>
+
+        {/* 登記情報(常時表示・後から追加/変更可) */}
+        <Card>
+          <CardHeader><CardTitle>登記情報</CardTitle></CardHeader>
+          <CardContent className="space-y-4 text-sm">
+            {(['land', 'building'] as const).map(t => {
+              const imgs = (t === 'land' ? registry.landImages : registry.buildingImages) || []
+              const hasData = !!(registry.texts?.[t]) || imgs.length > 0
+              const labelJa = t === 'land' ? '土地登記' : '建物登記'
+              return (
+                <div key={t} className="border border-stone-200 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="font-medium text-stone-700">{labelJa}</p>
+                    {hasData
+                      ? <Badge className="bg-green-600 text-white">読込済み（{imgs.length}ページ）</Badge>
+                      : <Badge variant="secondary">未取得</Badge>}
+                  </div>
+                  {imgs.length > 0 && (
+                    <div className="flex gap-1 overflow-x-auto">
+                      {imgs.map((src, i) => (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img key={i} src={src} alt={`${labelJa} ${i + 1}ページ目`} className="h-20 border border-stone-200 rounded" />
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3">
+                    <label className="text-xs px-3 py-1.5 border border-stone-300 rounded cursor-pointer hover:bg-stone-100 text-stone-600">
+                      {hasData ? 'PDFを差し替え' : 'PDFをアップロード'}
+                      <input
+                        type="file" accept=".pdf" multiple={t === 'land'} className="hidden" disabled={parsing !== null}
+                        onChange={e => {
+                          const fs = Array.from(e.target.files || [])
+                          e.target.value = ''
+                          if (!fs.length) return
+                          if (t === 'land') parseLandPdfs(fs)
+                          else parsePdf(fs[0], 'building')
+                        }}
+                      />
+                    </label>
+                    {hasData && (
+                      <button onClick={() => clearRegistry(t)} className="text-xs text-red-500 hover:underline">削除</button>
+                    )}
+                    {parsing === t && <span className="text-xs text-stone-400">解析中...</span>}
+                  </div>
+                </div>
+              )
+            })}
+            <p className="text-xs text-stone-400">アップロード・変更した内容はサーバーに保存され、査定書作成ページにも反映されます。</p>
           </CardContent>
         </Card>
 
@@ -423,6 +556,23 @@ export default function AdminCasePage({ params }: { params: Promise<{ id: string
                 </Button>
               </div>
             )}
+
+            {/* 操作履歴 */}
+            <div className="pt-3 border-t border-stone-200">
+              <p className="text-xs font-medium text-stone-500 mb-2">操作履歴</p>
+              {events.length === 0 ? (
+                <p className="text-xs text-stone-400">履歴はまだありません</p>
+              ) : (
+                <ul className="space-y-1.5 max-h-52 overflow-y-auto">
+                  {[...events].reverse().map((ev, i) => (
+                    <li key={i} className="text-xs text-stone-600 flex gap-2">
+                      <span className="text-stone-400 shrink-0">{new Date(ev.at).toLocaleString('ja-JP')}</span>
+                      <span>{ev.label}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </CardContent>
         </Card>
 

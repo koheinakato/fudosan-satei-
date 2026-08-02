@@ -152,6 +152,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
   }
 
+  const { appendCaseEvent } = await import('@/lib/caseEvents')
+  await appendCaseEvent(id, 'parcels', `筆数を${parcel_count}筆で確定・請求(${total.toLocaleString()}円)`)
+
   const updatedCase = await supabaseAdmin.from('cases').select('*').eq('id', id).single()
   return NextResponse.json({ case: updatedCase.data, chargeError })
 }
