@@ -89,6 +89,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
 
   // Weights
   const [weights, setWeights] = useState({ land: 50, building: 50 })
+  const [weightReason, setWeightReason] = useState('')
   const weightsAutoSet = useRef(false)
 
   // Map images
@@ -264,6 +265,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
     if (caseData.property_type === 'land') {
       weightsAutoSet.current = true
       setWeights({ land: 100, building: 0 })
+      setWeightReason('物件種別が土地(建物なし)のため、土地100%としています。')
       return
     }
     if (!building.usefulLife || !building.floorArea) return
@@ -273,6 +275,13 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
     const base = caseData.property_type === 'mansion' ? 20 : 40 // マンションは事例比較が主
     const bw = Math.max(5, Math.round((base * remainRatio) / 5) * 5)
     setWeights({ land: 100 - bw, building: bw })
+    const mainLabel = caseData.property_type === 'mansion' ? '事例' : '土地'
+    setWeightReason(
+      `登記情報より自動設定: ${building.structure || '構造不明'}・築${building.age}年 → ` +
+      `残存耐用年数 ${building.usefulLife - building.age}/${building.usefulLife}年(${Math.round(remainRatio * 100)}%)。` +
+      `${caseData.property_type === 'mansion' ? 'マンションは事例比較を主とするため建物の基準値20%' : '戸建ての建物基準値40%'}×残存率 → ` +
+      `建物${bw}%・${mainLabel}${100 - bw}%`
+    )
   }, [caseData, building])
 
   // Chart
@@ -806,7 +815,9 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
           {/* ウェイト */}
           <section>
             <h2 className="text-xs font-medium text-[#5a5a5a] mb-2 uppercase tracking-widest">査定ウェイト</h2>
-            <p className="text-[9px] text-[#9a9a9a] mb-2">※ 登記情報の築年数から自動調整されます（手動修正可）</p>
+            <p className="text-[9px] text-[#9a9a9a] mb-2">
+              {weightReason || '※ 登記の建物情報が読み込まれると築年数から自動調整されます（手動修正可）'}
+            </p>
             <div className="grid grid-cols-2 gap-2">
               {(['land', 'building'] as const).map((k, i) => (
                 <div key={k}>
