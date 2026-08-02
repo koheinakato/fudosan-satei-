@@ -88,12 +88,8 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
   const [obsCorr, setObsCorr] = useState(1.00)
 
   // Weights
-  const [weights, setWeights] = useState({ land: 45, building: 45, income: 10 })
-
-  // Income
-  const [income, setIncome] = useState({
-    monthlyRent: 0, vacancyRate: 8.0, expenseRate: 18.0, capRate: 6.5,
-  })
+  const [weights, setWeights] = useState({ land: 50, building: 50 })
+  const weightsAutoSet = useRef(false)
 
   // Map images
   const [rosenkaMap, setRosenkaMap] = useState<string>('')
@@ -146,7 +142,6 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
         setCaseData(c)
         const address = c.property_address || ''
         const isMansionProperty = c.property_type === 'mansion'
-        if (isMansionProperty) setWeights({ land: 70, building: 0, income: 30 })
         setInfo(prev => ({ ...prev, address, clientName: c.customer_name ? `${c.customer_name} 様` : '' }))
         if (!address || autoFetchDone.current) return
         autoFetchDone.current = true
@@ -200,20 +195,6 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
             }
           }).catch(() => {}),
 
-          fetch(`/api/cases/${id}/fetch-building-info`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ address, propertyType: c.property_type }),
-          }).then(r => r.json()).then(d => {
-            if (!d.error) {
-              // 建物概要はAIで埋めない(登記PDF由来のみ)。収益還元(参考)のみ自動入力
-              setIncome(prev => ({
-                monthlyRent: prev.monthlyRent || d.monthlyRent || 0,
-                vacancyRate: d.vacancyRate || prev.vacancyRate,
-                expenseRate: d.expenseRate || prev.expenseRate,
-                capRate: d.capRate || prev.capRate,
-              }))
-            }
-          }).catch(() => {}),
         ])
 
         setAutoFetching(false)
@@ -250,12 +231,6 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
     return { remainRatio: r, total: building.floorArea * building.newPrice * r * obsCorr }
   })()
 
-  const incomeEval = (() => {
-    const annual = income.monthlyRent * 12
-    const net = annual * (1 - income.vacancyRate / 100 - income.expenseRate / 100)
-    return net / ((income.capRate || 1) / 100)
-  })()
-
   const isMansion = caseData?.property_type === 'mansion'
   const caseEvalTotal = isMansion
     ? landEval.average * individualCorr * building.floorArea
@@ -263,10 +238,26 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
 
   const totalEval =
     caseEvalTotal * (weights.land / 100) +
-    buildingEval.total * (weights.building / 100) +
-    incomeEval * (weights.income / 100)
+    buildingEval.total * (weights.building / 100)
 
-  const weightSum = weights.land + weights.building + weights.income
+  const weightSum = weights.land + weights.building
+
+  // 登記情報から査定ウェイトを自動調整(築古ほど建物比重を下げる)。手動変更後は上書きしない
+  useEffect(() => {
+    if (!caseData || weightsAutoSet.current) return
+    if (caseData.property_type === 'land') {
+      weightsAutoSet.current = true
+      setWeights({ land: 100, building: 0 })
+      return
+    }
+    if (!building.usefulLife || !building.floorArea) return
+    weightsAutoSet.current = true
+    // 残存耐用年数の割合(0.1〜1.0)に応じて建物比重を配分
+    const remainRatio = Math.max((building.usefulLife - building.age) / building.usefulLife, 0.1)
+    const base = caseData.property_type === 'mansion' ? 20 : 40 // マンションは事例比較が主
+    const bw = Math.max(5, Math.round((base * remainRatio) / 5) * 5)
+    setWeights({ land: 100 - bw, building: bw })
+  }, [caseData, building])
 
   // Chart
   useEffect(() => {
@@ -418,10 +409,8 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
           evaluationTotal: totalEval,
           caseEvalTotal,
           buildingTotal: buildingEval.total,
-          incomeTotal: incomeEval,
           weightLand: weights.land,
           weightBuilding: weights.building,
-          weightIncome: weights.income,
           cases: casesSource === 'reinfolib' ? cases.map(c => ({ name: c.name, price: c.price })) : [],
         }),
       })
@@ -801,36 +790,17 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
           {/* ウェイト */}
           <section>
             <h2 className="text-xs font-medium text-[#5a5a5a] mb-2 uppercase tracking-widest">査定ウェイト</h2>
-            <div className="grid grid-cols-3 gap-2">
-              {(['land', 'building', 'income'] as const).map((k, i) => (
+            <p className="text-[9px] text-[#9a9a9a] mb-2">※ 登記情報の築年数から自動調整されます（手動修正可）</p>
+            <div className="grid grid-cols-2 gap-2">
+              {(['land', 'building'] as const).map((k, i) => (
                 <div key={k}>
-                  <label className="block text-[10px] text-[#9a9a9a] mb-0.5">{[isMansion ? '事例 (%)' : '土地 (%)', '建物 (%)', '収益 (%)'][i]}</label>
+                  <label className="block text-[10px] text-[#9a9a9a] mb-0.5">{[isMansion ? '事例 (%)' : '土地 (%)', '建物 (%)'][i]}</label>
                   <input type="number" value={weights[k]} onChange={e => setWeights(prev => ({ ...prev, [k]: parseInt(e.target.value) || 0 }))}
                     className="w-full border border-[#ced4da] rounded px-2 py-1 text-xs text-center text-[#5a5a5a] focus:outline-none focus:border-[#5a5a5a]" />
                 </div>
               ))}
             </div>
             <p className={`text-[10px] mt-1 ${weightSum === 100 ? 'text-[#9a9a9a]' : 'text-red-500'}`}>合計: {weightSum}% {weightSum !== 100 && '← 100%にしてください'}</p>
-          </section>
-
-          {/* 収益 */}
-          <section>
-            <h2 className="text-xs font-medium text-[#5a5a5a] mb-1 uppercase tracking-widest">収益還元</h2>
-            <p className="text-[9px] text-[#9a9a9a] mb-2">※ AI算出（参考値）。査定への影響はウェイトで調整してください。</p>
-            <div className="grid grid-cols-2 gap-2">
-              {([
-                ['月額想定賃料 (円)', 'monthlyRent'],
-                ['空室率 (%)', 'vacancyRate'],
-                ['経費率 (%)', 'expenseRate'],
-                ['還元利回り (%)', 'capRate'],
-              ] as [string, keyof typeof income][]).map(([label, key]) => (
-                <div key={key}>
-                  <label className="block text-[10px] text-[#9a9a9a] mb-0.5">{label}</label>
-                  <input type="number" step="0.1" value={income[key] || ''} onChange={e => setIncome(prev => ({ ...prev, [key]: parseFloat(e.target.value) || 0 }))}
-                    className="w-full border border-[#ced4da] rounded px-2 py-1 text-xs text-[#5a5a5a] focus:outline-none focus:border-[#5a5a5a]" />
-                </div>
-              ))}
-            </div>
           </section>
 
           {/* 地図画像 */}
@@ -939,10 +909,9 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                 <div style={{ border: '1px solid #ced4da', padding: '12px', marginBottom: '14px', textAlign: 'center' }}>
                   <p style={{ fontSize: '9px', letterSpacing: '0.15em', textTransform: 'uppercase', color: '#9a9a9a', marginBottom: '6px' }}>査定算出 総合評価額</p>
                   <p style={{ fontSize: '28px', fontWeight: '700', color: '#1a1a1a', fontFamily: '"Noto Serif JP", serif' }}>{formatNum(totalEval)} <span style={{ fontSize: '12px', fontWeight: '400', color: '#5a5a5a' }}>円</span></p>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #ced4da' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #ced4da' }}>
                     <div style={{ fontSize: '9px', color: '#9a9a9a' }}>{isMansion ? '事例評価' : '土地評価'} ({weights.land}%)<br /><span style={{ color: '#1a1a1a', fontWeight: '600', fontSize: '10px' }}>{formatNum(caseEvalTotal)}円</span></div>
                     <div style={{ fontSize: '9px', color: '#9a9a9a' }}>建物評価 ({weights.building}%)<br /><span style={{ color: '#1a1a1a', fontWeight: '600', fontSize: '10px' }}>{formatNum(buildingEval.total)}円</span></div>
-                    <div style={{ fontSize: '9px', color: '#9a9a9a' }}>収益評価 ({weights.income}%)<br /><span style={{ color: '#1a1a1a', fontWeight: '600', fontSize: '10px' }}>{formatNum(incomeEval)}円</span><br /><span style={{ fontSize: '7px', color: '#aaa' }}>※AI参考</span></div>
                   </div>
                 </div>
 
