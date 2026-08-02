@@ -19,7 +19,7 @@ export async function POST(req: Request) {
 例: 「鉄筋コンクリート造陸屋根10階建」→ mansionTotalFloors: 10、「5階部分」→ mansionFloor: 5
 
 【抽出テキスト】
-${text.slice(0, 3000)}
+${text.slice(0, 30000)}
 
 以下のJSONフォーマットのみを返してください（コードブロック不要）:
 {

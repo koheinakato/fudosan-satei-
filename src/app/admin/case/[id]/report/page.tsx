@@ -124,7 +124,11 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
       if (stored) {
         const data = JSON.parse(stored)
         if (data.images?.length > 0) setRegistryImages(data.images)
-        const combinedText = Object.values(data.texts || {}).join('\n')
+        // 土地・建物をラベル付きで結合(建物情報の取りこぼし防止)
+        const combinedText = [
+          data.texts?.land ? `【土地登記】\n${data.texts.land}` : '',
+          data.texts?.building ? `【建物登記】\n${data.texts.building}` : '',
+        ].filter(Boolean).join('\n\n')
         if (combinedText.trim().length > 10) {
           fetch(`/api/cases/${id}/parse-registry`, {
             method: 'POST',

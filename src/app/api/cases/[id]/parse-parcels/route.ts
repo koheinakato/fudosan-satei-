@@ -17,7 +17,7 @@ export async function POST(req: Request) {
 このテキストを解析して、土地の「筆数」（地番の数）を数えてください。
 
 【抽出テキスト】
-${text.slice(0, 4000)}
+${text.slice(0, 30000)}
 
 以下のJSONのみを返してください（コードブロック不要）:
 {
