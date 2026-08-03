@@ -813,6 +813,14 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                 <p className="text-[10px] text-[#5a5a5a] mt-2">
                   掛け率: ベース{buildingEval.base}%（{structClass}・築{building.age}年）
                   {buildingEval.added > 0 && ` + 修繕加算${buildingEval.added}pt`} = <strong>{buildingEval.rate}%</strong>
+                  {building.age < 15 && buildingEval.added > 0 && <span className="text-[#9a9a9a]">（築15年未満のため加算1/2圧縮）</span>}
+                </p>
+              )}
+              {structClass && building.floorArea > 0 && buildingEval.base + buildingEval.added > buildingEval.rate && (
+                <p className="text-[10px] text-[#c0392b] mt-1">
+                  ※ 上限ルールにより{buildingEval.rate === buildingEval.base
+                    ? '加算は評価額に反映されません（加算は95%を超えられず、築浅のためベース値が上限）'
+                    : `95%上限まで一部のみ反映されています`}
                 </p>
               )}
             </section>
