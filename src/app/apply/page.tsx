@@ -149,16 +149,19 @@ export default function ApplyPage() {
                 <p className="text-xs text-[#9a9a9a]">
                   該当するものがあればチェックしてください。<strong className="text-[#5a5a5a]">ご記載は必須ではありませんが、記載いただくと査定の精度が上がります。</strong>
                 </p>
-                <div className="space-y-1.5 pt-1">
+                <div className="space-y-2 pt-1">
                   {RENOVATION_ITEMS.map(item => (
-                    <label key={item.key} className="flex items-start gap-2 text-sm text-[#495057] cursor-pointer hover:bg-white rounded px-1 py-0.5">
+                    <label key={item.key} className="flex items-start gap-2 cursor-pointer hover:bg-white rounded px-1 py-1">
                       <input
                         type="checkbox"
                         checked={renovations.includes(item.key)}
                         onChange={() => toggleRenovation(item.key)}
-                        className="mt-1 accent-[#5a5a5a]"
+                        className="mt-0.5 accent-[#5a5a5a]"
                       />
-                      <span>{item.label}</span>
+                      <span className="text-sm text-[#495057]">
+                        {item.label}
+                        <span className="block text-xs text-[#9a9a9a] mt-0.5">チェックする条件: {item.condition}</span>
+                      </span>
                     </label>
                   ))}
                 </div>

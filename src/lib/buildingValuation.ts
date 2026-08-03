@@ -3,17 +3,44 @@
 export type StructureClass = '木造' | '軽量鉄骨' | 'RC・SRC'
 
 // 申込フォーム・管理画面で共通の修繕・リフォーム加算項目
-// group: 同一部位は択一(高い方のみ採用)
+// group: 同一部位は択一(高い方のみ採用)。condition: チェックすべき条件の明文
 export const RENOVATION_ITEMS = [
-  { key: 'roof_full', label: '屋根・外壁の葺替／張替（施工後10年以内）', points: 10, group: 'roof' },
-  { key: 'roof_paint', label: '屋根・外壁の塗装のみ（施工後10年以内）', points: 5, group: 'roof' },
-  { key: 'water_full', label: '水回り4点一式の更新（キッチン・浴室・洗面・トイレ／10年以内）', points: 10, group: 'water' },
-  { key: 'water_part', label: '水回りの一部更新（1〜2点／10年以内）', points: 4, group: 'water' },
-  { key: 'interior', label: '内装フルリフォーム（クロス・床の全面更新／5年以内）', points: 6, group: null },
-  { key: 'pipes', label: '給排水管の更新（本管・枝管とも）', points: 10, group: null },
-  { key: 'sash', label: 'サッシ交換・内窓・断熱改修（全開口部）', points: 5, group: null },
-  { key: 'seismic', label: '耐震改修（新耐震基準適合・適合証明書あり）', points: 8, group: null },
-  { key: 'hvac', label: '給湯器・空調の更新（5年以内）', points: 2, group: null },
+  {
+    key: 'roof_full', label: '屋根・外壁の葺替／張替', points: 10, group: 'roof',
+    condition: '屋根・外壁を全面的に葺き替え（張り替え）済みで、かつ その工事から10年以内の場合',
+  },
+  {
+    key: 'roof_paint', label: '屋根・外壁の塗装', points: 5, group: 'roof',
+    condition: '塗装のみ行い、かつ その工事から10年以内の場合（葺替・張替をした場合は上の項目をチェック）',
+  },
+  {
+    key: 'water_full', label: '水回り4点すべての更新', points: 10, group: 'water',
+    condition: 'キッチン・浴室・洗面台・トイレの4点すべてを交換済みで、かつ その工事から10年以内の場合',
+  },
+  {
+    key: 'water_part', label: '水回りの一部更新（1〜2点）', points: 4, group: 'water',
+    condition: '4点のうち1〜2点を交換済みで、かつ その工事から10年以内の場合（4点すべてなら上の項目をチェック）',
+  },
+  {
+    key: 'interior', label: '内装フルリフォーム', points: 6, group: null,
+    condition: 'クロス（壁紙）と床の両方を全面的に張り替え済みで、かつ その工事から5年以内の場合',
+  },
+  {
+    key: 'pipes', label: '給排水管の更新', points: 10, group: null,
+    condition: '給排水管を本管・枝管ともに交換済みの場合（工事時期は問いません）',
+  },
+  {
+    key: 'sash', label: 'サッシ交換・内窓設置・断熱改修', points: 5, group: null,
+    condition: 'すべての窓（開口部）を対象に実施済みの場合（工事時期は問いません）',
+  },
+  {
+    key: 'seismic', label: '耐震改修', points: 8, group: null,
+    condition: '耐震改修工事を行い「耐震基準適合証明書」を取得済みの場合',
+  },
+  {
+    key: 'hvac', label: '給湯器・空調（エアコン）の更新', points: 2, group: null,
+    condition: '交換から5年以内の場合',
+  },
 ] as const
 
 export type RenovationKey = typeof RENOVATION_ITEMS[number]['key']
