@@ -572,7 +572,8 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
   )
 
   const SectionHead = ({ children }: { children: React.ReactNode }) => (
-    <h3 className="text-[9px] font-medium text-[#5a5a5a] uppercase tracking-widest border-b border-[#ced4da] pb-0.5 mb-2">{children}</h3>
+    // pb余白と明示的なline-heightがないと、PDF描画(html2canvas)で文字が下線に重なる
+    <h3 style={{ fontSize: '9px', fontWeight: 500, color: '#5a5a5a', textTransform: 'uppercase', letterSpacing: '0.1em', lineHeight: '1.4', borderBottom: '1px solid #ced4da', paddingBottom: '5px', marginBottom: '8px' }}>{children}</h3>
   )
 
   const Th = ({ children, right }: { children: React.ReactNode; right?: boolean }) => (
