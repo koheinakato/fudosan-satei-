@@ -61,6 +61,31 @@ function trimOutliers<T>(items: T[], unitOf: (t: T) => number): T[] {
   return items.filter(t => unitOf(t) >= median * 0.4 && unitOf(t) <= median * 2.5)
 }
 
+// 建築費・地価の高騰局面では古い事例ほど現在価格と乖離するため、
+// 直近4四半期の事例を最優先し、不足分のみ古い事例で補完する
+const RECENT_QUARTERS = 4
+function splitByRecency(txs: Transaction[]): { recent: Transaction[]; older: Transaction[] } {
+  const cutoff = new Date()
+  cutoff.setMonth(cutoff.getMonth() - RECENT_QUARTERS * 3)
+  const recent: Transaction[] = []
+  const older: Transaction[] = []
+  for (const t of txs) {
+    ((parsePeriod(t.Period)?.getTime() ?? 0) >= cutoff.getTime() ? recent : older).push(t)
+  }
+  return { recent, older }
+}
+
+// 採用事例の取引時期の範囲(例: 2025年第2四半期〜2025年第4四半期)
+function periodRangeOf(periods: string[]): string {
+  const dated = periods
+    .map(p => ({ p, d: parsePeriod(p)?.getTime() ?? 0 }))
+    .filter(x => x.d > 0)
+    .sort((a, b) => a.d - b.d)
+  if (dated.length === 0) return ''
+  const from = dated[0].p, to = dated[dated.length - 1].p
+  return from === to ? from : `${from}〜${to}`
+}
+
 async function buildRealCases(address: string, propertyType: string): Promise<{ cases: Case[]; note: string } | null> {
   const prefCode = prefCodeFromAddress(address)
   if (!prefCode) return null
@@ -78,11 +103,17 @@ async function buildRealCases(address: string, propertyType: string): Promise<{ 
 
   const txs: Transaction[] = cityCode ? await fetchTransactions(prefCode, cityCode) : []
   const cases: Case[] = []
+  const adoptedPeriods: string[] = []
+  const pointYears = new Set<number>()
 
   if (propertyType === 'mansion') {
     // マンション: 実取引の専有面積㎡単価で比準(建物込み単価なので公示地価とは混ぜない)
-    const candidates = txs.filter(t => (t.Type ?? '').includes('マンション') && (txUnitPrice(t) ?? 0) >= 30000)
-    const mans = sortByRelevance(trimOutliers(candidates, t => txUnitPrice(t)!), town, points)
+    const candidates = trimOutliers(
+      txs.filter(t => (t.Type ?? '').includes('マンション') && (txUnitPrice(t) ?? 0) >= 30000),
+      t => txUnitPrice(t)!
+    )
+    const { recent, older } = splitByRecency(candidates)
+    const mans = [...sortByRelevance(recent, town, points), ...sortByRelevance(older, town, points)]
     for (const t of mans) {
       const unit = txUnitPrice(t)
       if (!unit) continue
@@ -95,6 +126,7 @@ async function buildRealCases(address: string, propertyType: string): Promise<{ 
         timeCorrect: timeFactor(parsePeriod(t.Period), avgYoy),
         areaCorrect: 1.00,
       })
+      if (t.Period) adoptedPeriods.push(t.Period)
       if (cases.length >= 6) break
     }
   } else {
@@ -115,9 +147,11 @@ async function buildRealCases(address: string, propertyType: string): Promise<{ 
         timeCorrect: timeFactor(p.priceDate, p.yoyRate ?? avgYoy),
         areaCorrect: 1.00,
       })
+      pointYears.add(p.priceDate.getFullYear())
     }
 
-    const lands = sortByRelevance(txs.filter(t => t.Type === '宅地(土地)'), town, points)
+    const { recent, older } = splitByRecency(txs.filter(t => t.Type === '宅地(土地)'))
+    const lands = [...sortByRelevance(recent, town, points), ...sortByRelevance(older, town, points)]
     let added = 0
     for (const t of lands) {
       const unit = txUnitPrice(t)
@@ -130,14 +164,17 @@ async function buildRealCases(address: string, propertyType: string): Promise<{ 
         timeCorrect: timeFactor(parsePeriod(t.Period), avgYoy),
         areaCorrect: 1.00,
       })
+      if (t.Period) adoptedPeriods.push(t.Period)
       if (++added >= 3) break
     }
   }
 
   if (cases.length < 3) return null
+  const range = periodRangeOf(adoptedPeriods)
+  const years = [...pointYears].sort().map(y => `${y}年`).join('・')
   const noteParts = [
-    points.length > 0 ? `地価公示・地価調査 ${points.length}地点` : null,
-    txs.length > 0 ? `実取引 ${txs.length}件から選定` : null,
+    range ? `採用した取引事例の時期: ${range}（直近${RECENT_QUARTERS}四半期を優先、時点修正で現在価格へ補正）` : null,
+    years ? `地価公示・地価調査は${years}時点の価格` : null,
   ].filter(Boolean)
   return { cases, note: noteParts.join(' / ') }
 }
