@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { Case } from '@/types/database'
 import { RENOVATION_ITEMS, structureClassOf, buildingRate } from '@/lib/buildingValuation'
+import { replacementCost, CONSTRUCTION_COST_PERIOD, type ReplacementCost } from '@/lib/constructionCosts'
 
 const COMPANY = {
   name: 'ぷらたなすきかく株式会社',
@@ -14,13 +15,13 @@ const COMPANY = {
 
 const formatNum = (v: number) => new Intl.NumberFormat('ja-JP').format(Math.round(v || 0))
 
-// 登記の建物構造から法定耐用年数と再調達原価の目安を導出(AI推定はしない)
-const buildingParamsFromStructure = (structure: string): { usefulLife: number; newPrice: number } | null => {
-  if (/ＳＲＣ|SRC|鉄骨鉄筋/.test(structure)) return { usefulLife: 47, newPrice: 240000 }
-  if (/ＲＣ|RC|鉄筋コンクリート|コンクリート/.test(structure)) return { usefulLife: 47, newPrice: 220000 }
-  if (/軽量鉄骨/.test(structure)) return { usefulLife: 27, newPrice: 170000 }
-  if (/鉄骨|Ｓ造/.test(structure)) return { usefulLife: 34, newPrice: 190000 }
-  if (/木造|Ｗ造/.test(structure)) return { usefulLife: 22, newPrice: 160000 }
+// 登記の建物構造から法定耐用年数を導出(再調達原価は建築着工統計から別途引き当てる)
+const buildingParamsFromStructure = (structure: string): { usefulLife: number } | null => {
+  if (/ＳＲＣ|SRC|鉄骨鉄筋/.test(structure)) return { usefulLife: 47 }
+  if (/ＲＣ|RC|鉄筋コンクリート|コンクリート/.test(structure)) return { usefulLife: 47 }
+  if (/軽量鉄骨/.test(structure)) return { usefulLife: 27 }
+  if (/鉄骨|Ｓ造/.test(structure)) return { usefulLife: 34 }
+  if (/木造|Ｗ造/.test(structure)) return { usefulLife: 22 }
   return null
 }
 
@@ -92,6 +93,8 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
   // Weights
   // 修繕・リフォーム履歴(申込時の顧客入力を初期値に、管理側で修正可)
   const [renovations, setRenovations] = useState<string[]>([])
+  // 再調達原価の引き当て情報(建築着工統計ベース)
+  const [costInfo, setCostInfo] = useState<ReplacementCost | null>(null)
 
   // Map images
   const [rosenkaMap, setRosenkaMap] = useState<string>('')
@@ -243,6 +246,16 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
     const avg = sum / (cases.length || 1)
     return { cases: calced, average: avg, total: avg * individualCorr * validLandArea }
   })()
+
+  // 再調達原価の初期値: 建築着工統計(都道府県×構造の新築住宅工事費実績)から引き当て。
+  // 手動入力済み(newPrice > 0)の場合は上書きしない
+  useEffect(() => {
+    if (!caseData || !building.structure) return
+    const rc = replacementCost(building.structure, caseData.property_address || '')
+    if (!rc) return
+    setCostInfo(rc)
+    setBuilding(prev => prev.newPrice > 0 ? prev : { ...prev, newPrice: rc.rate })
+  }, [caseData, building.structure])
 
   // 建物評価: 建物価値評価基準(構造別・経年掛け率+修繕履歴加算)による
   const structClass = structureClassOf(building.structure)
@@ -741,7 +754,7 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                 ['延床面積 (㎡)', 'floorArea', 'number', '0.00'],
                 ['築年数 (年)', 'age', 'number', '0'],
                 ['法定耐用年数 (年)', 'usefulLife', 'number', '22'],
-                ['再調達原価 (円/㎡)', 'newPrice', 'number', '200000'],
+                ['再調達原価 (円/㎡)', 'newPrice', 'number', '225000'],
               ] as [string, keyof typeof building, string, string][]).map(([label, key, type, ph]) => (
                 <div key={key} className={key === 'structure' ? 'col-span-2' : ''}>
                   <label className="block text-[10px] text-[#9a9a9a] mb-0.5">{label}</label>
@@ -756,6 +769,12 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                   className="w-full border border-[#ced4da] rounded px-2 py-1 text-xs text-[#5a5a5a] focus:outline-none focus:border-[#5a5a5a]" />
               </div>
             </div>
+            {costInfo && (
+              <p className="text-[9px] text-[#9a9a9a] mt-1.5">
+                ※ 再調達原価の初期値 {formatNum(costInfo.rate)}円/㎡ は建築着工統計調査({CONSTRUCTION_COST_PERIOD})の
+                {costInfo.region}・{costInfo.costClass}の新築住宅工事費実績です（手動修正可）
+              </p>
+            )}
           </section>
 
           {/* 取引事例 */}
@@ -1121,6 +1140,9 @@ export default function ReportPage({ params }: { params: Promise<{ id: string }>
                     <p style={{ fontSize: '7px', color: '#9a9a9a', marginTop: '2px' }}>
                       ※ 建物価値評価基準（構造別・経年掛け率表）による。ベース掛け率{buildingEval.base}%
                       {buildingEval.added > 0 ? `＋修繕・リフォーム履歴による加算${buildingEval.added}pt` : ''}
+                      {costInfo && building.newPrice === costInfo.rate
+                        ? `。再調達原価は国土交通省 建築着工統計調査（${CONSTRUCTION_COST_PERIOD}・${costInfo.region}・${costInfo.costClass}）の新築住宅工事費実績による`
+                        : ''}
                       {isMansion ? '。区分マンションは取引事例比較法を主たる手法とし、本表は検算用。' : ''}
                     </p>
                   )}
