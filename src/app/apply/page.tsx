@@ -12,7 +12,8 @@ export default function ApplyPage() {
     customer_name: '',
     customer_email: '',
     customer_phone: '',
-    property_address: '',
+    property_location: '', // 法務局管理の「所在」
+    property_lot: '',      // 地番
     property_type: '',
     assessment_purpose: '',
   })
@@ -27,10 +28,16 @@ export default function ApplyPage() {
     setLoading(true)
     setError('')
 
+    // 所在+地番を連結して物件住所として送信(登記簿と同じ表記になる)
+    const { property_location, property_lot, ...rest } = form
     const res = await fetch('/api/cases', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, renovations }),
+      body: JSON.stringify({
+        ...rest,
+        property_address: `${property_location.trim()}${property_lot.trim()}`,
+        renovations,
+      }),
     })
 
     const data = await res.json()
@@ -109,22 +116,38 @@ export default function ApplyPage() {
             <p className="label-nendo border-b border-[#ced4da] pb-2">物件情報</p>
 
             <div className="space-y-1.5">
-              <label className="label-nendo">物件住所</label>
-              <input
-                type="text"
-                placeholder="東京都〇〇区〇〇1-2-3（マンションは 〇〇マンション101号室 まで）"
-                value={form.property_address}
-                onChange={(e) => setForm({ ...form, property_address: e.target.value })}
-                required
-                className="w-full border border-[#ced4da] rounded px-3 py-2 text-sm text-[#495057] focus:outline-none focus:border-[#5a5757] transition-colors"
-              />
-              <p className={`text-xs ${form.property_type === 'mansion' ? 'text-[#c0392b]' : 'text-[#9a9a9a]'}`}>
-                ※ マンションの場合は、建物名・部屋番号までご入力ください（例: 〇〇マンション101号室）
-              </p>
+              <label className="label-nendo">物件の所在・地番</label>
               <p className="text-xs text-[#9a9a9a]">
-                ※ あわせて「地番」もご記載ください（例: 〇〇1-2-3　地番: 12番3）。地番は住所とは異なる番号で、
-                毎年お手元に届く固定資産税の納税通知書に記載されています。地番のご記載があると登記情報の取得がスムーズに進みます。
+                納税通知書（固定資産税）または登記簿に記載されている、法務局管理の「所在」と「地番」をご入力ください。
+                <strong className="text-[#5a5a5a]">郵便物が届く一般的な住所（住居表示）とは異なる場合があります。</strong>
               </p>
+              <div className="space-y-1">
+                <label className="block text-xs text-[#9a9a9a]">所在</label>
+                <input
+                  type="text"
+                  placeholder="例: 東京都〇〇区〇〇一丁目"
+                  value={form.property_location}
+                  onChange={(e) => setForm({ ...form, property_location: e.target.value })}
+                  required
+                  className="w-full border border-[#ced4da] rounded px-3 py-2 text-sm text-[#495057] focus:outline-none focus:border-[#5a5757] transition-colors"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="block text-xs text-[#9a9a9a]">地番</label>
+                <input
+                  type="text"
+                  placeholder="例: 12番3"
+                  value={form.property_lot}
+                  onChange={(e) => setForm({ ...form, property_lot: e.target.value })}
+                  required
+                  className="w-full border border-[#ced4da] rounded px-3 py-2 text-sm text-[#495057] focus:outline-none focus:border-[#5a5757] transition-colors"
+                />
+              </div>
+              {form.property_type === 'mansion' && (
+                <p className="text-xs text-[#c0392b]">
+                  ※ マンションの場合は、「所在」欄に建物名・部屋番号までご入力ください（例: 〇〇区〇〇一丁目 〇〇マンション101号室）
+                </p>
+              )}
             </div>
 
             <div className="space-y-1.5">
